@@ -9,7 +9,13 @@ from datetime import datetime
 from dateutil import parser as date_parser
 from utils.patterns import ValidationPatterns
 from utils.helpers import ValidationHelper
-from config import COMMON_AGE_RANGE, COMMON_YEAR_RANGE
+from config import (
+    CONTENT_DETECTION_THRESHOLD, 
+    SAMPLE_SIZE_FOR_CONTENT_DETECTION,
+    ALLOWED_DATE_FORMATS,
+    DEFAULT_DAYFIRST,
+    DATE_FORMAT_CONSISTENCY_THRESHOLD
+)
 
 
 class DataValidator:
@@ -32,26 +38,108 @@ class DataValidator:
         Returns:
             dict: Resultados de todas las validaciones
         """
+        # Detecta tipos de dato por contenido
+        content_types = self._detect_column_types_by_content()
+        
         self.validation_results = {
-            'email_validation': self._validate_emails(),
-            'phone_validation': self._validate_phones(),
-            'date_validation': self._validate_dates(),
+            'email_validation': self._validate_emails(content_types),
+            'phone_validation': self._validate_phones(content_types),
+            'date_validation': self._validate_dates(content_types),
             'numeric_validation': self._validate_numerics(),
             'text_validation': self._validate_text(),
-            'url_validation': self._validate_urls(),
+            'url_validation': self._validate_urls(content_types),
         }
         
         return self.validation_results
     
-    def _validate_emails(self):
+    def _detect_column_types_by_content(self):
+        """
+        Detecta tipos de dato basándose en el análisis del contenido de las columnas.
+        
+        Analiza una muestra de valores no nulos en cada columna y determina qué tipo
+        de dato es más probable según el porcentaje de valores que coinciden con
+        patrones de email, teléfono, fecha, URL, etc.
+        
+        Returns:
+            dict: {
+                'column_name': 'detected_type' o None,
+                ...
+            }
+        """
+        detected_types = {}
+        
+        for col in self.df.columns:
+            # Obtiene una muestra de valores no nulos
+            sample = self.df[col].dropna().head(SAMPLE_SIZE_FOR_CONTENT_DETECTION)
+            
+            if len(sample) == 0:
+                continue
+            
+            type_counts = {
+                'email': 0,
+                'phone': 0,
+                'date': 0,
+                'url': 0,
+                'numeric': 0,
+                'other': 0
+            }
+            
+            # Analiza cada valor en la muestra
+            for value in sample:
+                value_str = str(value).strip()
+                
+                # Verifica qué tipo es más probable
+                if ValidationPatterns.is_valid_email(value_str):
+                    type_counts['email'] += 1
+                elif ValidationPatterns.is_valid_phone(value_str):
+                    type_counts['phone'] += 1
+                elif ValidationPatterns.is_valid_url(value_str):
+                    type_counts['url'] += 1
+                elif ValidationPatterns.is_valid_date_format(value_str):
+                    type_counts['date'] += 1
+                elif ValidationPatterns.is_float(value_str):
+                    type_counts['numeric'] += 1
+                else:
+                    type_counts['other'] += 1
+            
+            # Calcula porcentajes
+            total_values = len(sample)
+            type_percentages = {
+                k: v / total_values for k, v in type_counts.items()
+            }
+            
+            # Encuentra el tipo más común que supere el umbral
+            best_type = None
+            best_percent = 0
+            for data_type, percentage in type_percentages.items():
+                if percentage >= CONTENT_DETECTION_THRESHOLD and percentage > best_percent:
+                    best_type = data_type
+                    best_percent = percentage
+            
+            detected_types[col] = best_type if best_type else None
+        
+        return detected_types
+    
+    def _validate_emails(self, content_types=None):
         """Valida columnas de email."""
+        if content_types is None:
+            content_types = {}
         email_results = {}
         
         # Detecta columnas de email por nombre
-        email_columns = [
+        email_columns_by_name = [
             col for col in self.df.columns
             if any(x in col.lower() for x in ['email', 'correo', 'mail'])
         ]
+        
+        # Detecta columnas de email por contenido
+        email_columns_by_content = [
+            col for col, detected_type in content_types.items()
+            if detected_type == 'email'
+        ]
+        
+        # Combina ambas listas (evita duplicados)
+        email_columns = list(set(email_columns_by_name + email_columns_by_content))
         
         for col in email_columns:
             invalid_emails = []
@@ -80,20 +168,33 @@ class DataValidator:
                     if (valid_count + invalid_count) > 0 else 0
                 ),
                 'examples_invalid': invalid_emails,
-                'is_problematic': invalid_count > 0
+                'is_problematic': invalid_count > 0,
+                'detected_by_content': col in email_columns_by_content
             }
         
         return email_results
     
-    def _validate_phones(self):
+    def _validate_phones(self, content_types=None):
         """Valida columnas de teléfono."""
+        if content_types is None:
+            content_types = {}
+        
         phone_results = {}
         
         # Detecta columnas de teléfono por nombre
-        phone_columns = [
+        phone_columns_by_name = [
             col for col in self.df.columns
             if any(x in col.lower() for x in ['telefono', 'phone', 'celular', 'mobile'])
         ]
+        
+        # Detecta columnas de teléfono por contenido
+        phone_columns_by_content = [
+            col for col, detected_type in content_types.items()
+            if detected_type == 'phone'
+        ]
+        
+        # Combina ambas listas (evita duplicados)
+        phone_columns = list(set(phone_columns_by_name + phone_columns_by_content))
         
         for col in phone_columns:
             invalid_phones = []
@@ -122,26 +223,40 @@ class DataValidator:
                     if (valid_count + invalid_count) > 0 else 0
                 ),
                 'examples_invalid': invalid_phones,
-                'is_problematic': invalid_count > 0
+                'is_problematic': invalid_count > 0,
+                'detected_by_content': col in phone_columns_by_content
             }
         
         return phone_results
     
-    def _validate_dates(self):
-        """Valida columnas de fecha."""
+    def _validate_dates(self, content_types=None):
+        """Valida columnas de fecha con detección de formato inconsistente."""
+        if content_types is None:
+            content_types = {}
+        
         date_results = {}
         
         # Detecta columnas de fecha por nombre
-        date_columns = [
+        date_columns_by_name = [
             col for col in self.df.columns
             if any(x in col.lower() for x in ['fecha', 'date', 'time', 'hora', 'timestamp'])
         ]
         
+        # Detecta columnas de fecha por contenido
+        date_columns_by_content = [
+            col for col, detected_type in content_types.items()
+            if detected_type == 'date'
+        ]
+        
+        # Combina ambas listas (evita duplicados)
+        date_columns = list(set(date_columns_by_name + date_columns_by_content))
+        
         for col in date_columns:
             invalid_dates = []
-            valid_count = 0
+            valid_dates = []
+            format_patterns = {}  # Rastrear qué formato usa cada fecha
+            ambiguous_dates = []  # Fechas que podrían ser DD/MM o MM/DD
             invalid_count = 0
-            format_issues = {}
             
             for idx, value in enumerate(self.df[col].items()):
                 if pd.isna(value[1]):
@@ -151,15 +266,45 @@ class DataValidator:
                 
                 # Intenta parsear la fecha
                 try:
-                    date_parser.parse(value_str)
-                    # Verifica si tiene formato consistente
-                    if ValidationPatterns.is_valid_date_format(value_str):
-                        valid_count += 1
+                    parsed_date = date_parser.parse(value_str, dayfirst=DEFAULT_DAYFIRST)
+                    
+                    # Intenta detectar el formato usado
+                    detected_format = None
+                    for fmt in ALLOWED_DATE_FORMATS:
+                        try:
+                            datetime.strptime(value_str, fmt)
+                            detected_format = fmt
+                            break
+                        except ValueError:
+                            continue
+                    
+                    if detected_format:
+                        format_patterns[detected_format] = format_patterns.get(detected_format, 0) + 1
+                        valid_dates.append({
+                            'value': value_str,
+                            'format': detected_format,
+                            'parsed': parsed_date
+                        })
                     else:
-                        # Formato no estándar pero válido
-                        format_issue = type(value_str).__name__
-                        format_issues[format_issue] = format_issues.get(format_issue, 0) + 1
-                        valid_count += 1
+                        # Fecha válida pero formato no estándar
+                        format_patterns['<formato_no_estándar>'] = format_patterns.get('<formato_no_estándar>', 0) + 1
+                        
+                        # Detecta ambigüedad potencial (p.ej., 03/04/2024 podría ser 3-abr o 4-mar)
+                        if '-' in value_str or '/' in value_str:
+                            parts = re.split('[/-]', value_str)
+                            if len(parts) >= 2 and int(parts[0]) <= 12 and int(parts[1]) <= 12:
+                                ambiguous_dates.append({
+                                    'row': idx + 1,
+                                    'value': value_str,
+                                    'issue': 'Ambiguo: podría ser DD/MM o MM/DD'
+                                })
+                        
+                        valid_dates.append({
+                            'value': value_str,
+                            'format': '<no_estándar>',
+                            'parsed': parsed_date
+                        })
+                
                 except Exception:
                     invalid_count += 1
                     if len(invalid_dates) < 5:
@@ -168,16 +313,34 @@ class DataValidator:
                             'value': value_str[:50]
                         })
             
+            # Calcula consistencia de formato
+            if format_patterns:
+                most_common_format = max(format_patterns, key=format_patterns.get)
+                most_common_count = format_patterns[most_common_format]
+                total_valid = len(valid_dates)
+                format_consistency = (most_common_count / total_valid * 100) if total_valid > 0 else 0
+            else:
+                format_consistency = 0
+                most_common_format = None
+            
             date_results[col] = {
-                'valid_count': valid_count,
+                'valid_count': len(valid_dates),
                 'invalid_count': invalid_count,
-                'format_inconsistencies': format_issues,
                 'invalid_percent': (
-                    (invalid_count / (valid_count + invalid_count) * 100)
-                    if (valid_count + invalid_count) > 0 else 0
+                    (invalid_count / (len(valid_dates) + invalid_count) * 100)
+                    if (len(valid_dates) + invalid_count) > 0 else 0
                 ),
+                'detected_formats': format_patterns,
+                'format_consistency_percent': format_consistency,
+                'most_common_format': most_common_format,
+                'ambiguous_dates': ambiguous_dates,
                 'examples_invalid': invalid_dates,
-                'is_problematic': invalid_count > 0 or len(format_issues) > 1
+                'is_problematic': (
+                    invalid_count > 0 or 
+                    format_consistency < DATE_FORMAT_CONSISTENCY_THRESHOLD or
+                    len(ambiguous_dates) > 0
+                ),
+                'detected_by_content': col in date_columns_by_content
             }
         
         return date_results
@@ -267,15 +430,27 @@ class DataValidator:
         
         return text_results
     
-    def _validate_urls(self):
+    def _validate_urls(self, content_types=None):
         """Valida columnas de URL."""
+        if content_types is None:
+            content_types = {}
+        
         url_results = {}
         
         # Detecta columnas de URL por nombre
-        url_columns = [
+        url_columns_by_name = [
             col for col in self.df.columns
             if any(x in col.lower() for x in ['url', 'website', 'web', 'link'])
         ]
+        
+        # Detecta columnas de URL por contenido
+        url_columns_by_content = [
+            col for col, detected_type in content_types.items()
+            if detected_type == 'url'
+        ]
+        
+        # Combina ambas listas (evita duplicados)
+        url_columns = list(set(url_columns_by_name + url_columns_by_content))
         
         for col in url_columns:
             invalid_urls = []
@@ -304,7 +479,8 @@ class DataValidator:
                     if (valid_count + invalid_count) > 0 else 0
                 ),
                 'examples_invalid': invalid_urls,
-                'is_problematic': invalid_count > 0
+                'is_problematic': invalid_count > 0,
+                'detected_by_content': col in url_columns_by_content
             }
         
         return url_results

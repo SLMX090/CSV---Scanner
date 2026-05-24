@@ -10,6 +10,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from utils.helpers import ReportHelper, StringHelper
+from modules.severity_analyzer import SeverityAnalyzer
 
 
 class ReportGenerator:
@@ -80,7 +81,14 @@ class ReportGenerator:
         return filepath
     
     def _write_summary_sheet(self, writer):
-        """Escribe la hoja de resumen ejecutivo."""
+        """Escribe la hoja de resumen ejecutivo con métricas dinámicas."""
+        # Calcula severidad dinámicamente
+        severity_issues = SeverityAnalyzer.analyze_severity(
+            self.profile,
+            self.validation_results
+        )
+        severity_counts = SeverityAnalyzer.get_severity_counts(severity_issues)
+        
         summary_data = {
             'Métrica': [
                 'Fecha del Reporte',
@@ -108,9 +116,9 @@ class ReportGenerator:
                 str(self.profile['duplicates']['total_duplicates']),
                 f"{self.profile['duplicates']['duplicates_percent']:.2f}%",
                 str(len(self.profile.get('data_type_issues', {}))),
-                '0',  # Placeholder
-                '0',  # Placeholder
-                '0'   # Placeholder
+                str(severity_counts['critical']),
+                str(severity_counts['severe']),
+                str(severity_counts['warnings'])
             ]
         }
         
@@ -136,7 +144,7 @@ class ReportGenerator:
         df_info.to_excel(writer, sheet_name='INFO_GENERAL', index=False)
     
     def _write_null_analysis_sheet(self, writer):
-        """Escribe análisis de valores nulos."""
+        """Escribe análisis de valores nulos, asegurando que la hoja siempre existe."""
         null_data = []
         
         for col, info in self.profile['null_analysis']['by_column'].items():
@@ -147,9 +155,17 @@ class ReportGenerator:
                 'Estado': 'CRÍTICO' if info['percent'] >= 80 else 'GRAVE' if info['percent'] >= 40 else 'OK'
             })
         
-        if null_data:
-            df_nulls = pd.DataFrame(null_data)
-            df_nulls.to_excel(writer, sheet_name='ANALISIS_NULOS', index=False)
+        # Si no hay nulos, añade una fila indicando que no hay incidencias
+        if not null_data:
+            null_data.append({
+                'Columna': 'N/A',
+                'Nulos': 0,
+                '% Nulos': '0.00%',
+                'Estado': 'Sin incidencias detectadas'
+            })
+        
+        df_nulls = pd.DataFrame(null_data)
+        df_nulls.to_excel(writer, sheet_name='ANALISIS_NULOS', index=False)
     
     def _write_duplicates_sheet(self, writer):
         """Escribe análisis de duplicados."""
@@ -189,7 +205,7 @@ class ReportGenerator:
         df_profiles.to_excel(writer, sheet_name='PERFIL_COLUMNAS', index=False)
     
     def _write_validation_sheet(self, writer):
-        """Escribe resultados de validaciones."""
+        """Escribe resultados de validaciones, asegurando que la hoja siempre existe."""
         validation_data = []
         
         # Validaciones de email
@@ -214,16 +230,26 @@ class ReportGenerator:
                 'Estado': 'PROBLEMÁTICO' if info['is_problematic'] else 'OK'
             })
         
-        if validation_data:
-            df_validations = pd.DataFrame(validation_data)
-            df_validations.to_excel(writer, sheet_name='VALIDACIONES', index=False)
+        # Si no hay validaciones, añade una fila indicando que no hay incidencias
+        if not validation_data:
+            validation_data.append({
+                'Columna': 'N/A',
+                'Tipo Validación': 'N/A',
+                'Válidos': 0,
+                'Inválidos': 0,
+                '% Inválidos': '0.00%',
+                'Estado': 'Sin incidencias detectadas'
+            })
+        
+        df_validations = pd.DataFrame(validation_data)
+        df_validations.to_excel(writer, sheet_name='VALIDACIONES', index=False)
     
     def _write_cleaning_recommendations_sheet(self, writer):
-        """Escribe recomendaciones de limpieza."""
+        """Escribe recomendaciones de limpieza, asegurando que la hoja siempre existe."""
         cleaning_recs = self.recommendations.get('cleaning', [])
         
+        clean_data = []
         if cleaning_recs:
-            clean_data = []
             for rec in cleaning_recs:
                 clean_data.append({
                     'Severidad': rec.get('severity', ''),
@@ -231,16 +257,25 @@ class ReportGenerator:
                     'Recomendación': StringHelper.truncate_string(rec.get('recommendation', ''), 100),
                     'Acción': rec.get('action', '')
                 })
-            
-            df_cleaning = pd.DataFrame(clean_data)
-            df_cleaning.to_excel(writer, sheet_name='LIMPIEZA', index=False)
+        
+        # Si no hay recomendaciones, añade una fila indicando que no hay incidencias
+        if not clean_data:
+            clean_data.append({
+                'Severidad': 'N/A',
+                'Columna': 'N/A',
+                'Recomendación': 'Sin incidencias detectadas',
+                'Acción': 'N/A'
+            })
+        
+        df_cleaning = pd.DataFrame(clean_data)
+        df_cleaning.to_excel(writer, sheet_name='LIMPIEZA', index=False)
     
     def _write_database_rules_sheet(self, writer):
-        """Escribe reglas sugeridas para base de datos."""
+        """Escribe reglas sugeridas para base de datos, asegurando que la hoja siempre existe."""
         db_rules = self.recommendations.get('database_rules', [])
         
+        rules_data = []
         if db_rules:
-            rules_data = []
             for rule in db_rules:
                 rules_data.append({
                     'Tipo de Regla': rule.get('rule_type', ''),
@@ -251,16 +286,25 @@ class ReportGenerator:
                     ),
                     'Razón': StringHelper.truncate_string(rule.get('reason', ''), 100)
                 })
-            
-            df_rules = pd.DataFrame(rules_data)
-            df_rules.to_excel(writer, sheet_name='REGLAS_BD', index=False)
+        
+        # Si no hay reglas, añade una fila indicando que no hay incidencias
+        if not rules_data:
+            rules_data.append({
+                'Tipo de Regla': 'N/A',
+                'Columna': 'N/A',
+                'SQL/Descripción': 'Sin incidencias detectadas',
+                'Razón': 'N/A'
+            })
+        
+        df_rules = pd.DataFrame(rules_data)
+        df_rules.to_excel(writer, sheet_name='REGLAS_BD', index=False)
     
     def _write_normalization_sheet(self, writer):
-        """Escribe recomendaciones de normalización."""
+        """Escribe recomendaciones de normalización, asegurando que la hoja siempre existe."""
         norm_recs = self.recommendations.get('normalization', [])
         
+        norm_data = []
         if norm_recs:
-            norm_data = []
             for rec in norm_recs:
                 norm_data.append({
                     'Tipo': rec.get('type', ''),
@@ -268,9 +312,18 @@ class ReportGenerator:
                     'Operación': rec.get('operation', ''),
                     'Razón': StringHelper.truncate_string(rec.get('reason', ''), 100)
                 })
-            
-            df_norm = pd.DataFrame(norm_data)
-            df_norm.to_excel(writer, sheet_name='NORMALIZACION', index=False)
+        
+        # Si no hay recomendaciones, añade una fila indicando que no hay incidencias
+        if not norm_data:
+            norm_data.append({
+                'Tipo': 'N/A',
+                'Columna': 'N/A',
+                'Operación': 'Sin incidencias detectadas',
+                'Razón': 'N/A'
+            })
+        
+        df_norm = pd.DataFrame(norm_data)
+        df_norm.to_excel(writer, sheet_name='NORMALIZACION', index=False)
     
     def _write_problem_samples_sheet(self, writer):
         """Escribe muestras de datos problemáticos."""

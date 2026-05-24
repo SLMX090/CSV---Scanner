@@ -20,6 +20,7 @@ from modules.data_profiler import DataProfiler
 from modules.validators import DataValidator
 from modules.recommendations import RecommendationGenerator
 from modules.report_generator import ReportGenerator
+from modules.severity_analyzer import SeverityAnalyzer
 
 
 # Configuración de la página
@@ -102,13 +103,6 @@ with st.sidebar:
     
     st.divider()
     
-    st.subheader("Opciones de Reporte")
-    export_format = st.multiselect(
-        "Formatos de exportación:",
-        ['Excel', 'HTML'],
-        default=['Excel']
-    )
-    
     st.divider()
     st.info("""
     **Consejos de Uso:**
@@ -168,13 +162,34 @@ with tab1:
                 st.success("✅ Archivo cargado correctamente")
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.metric("Filas", load_info['rows'])
                 with col2:
                     st.metric("Columnas", load_info['columns'])
                 with col3:
                     st.metric("Delimitador", f"'{load_info['delimiter']}'")
+                with col4:
+                    st.metric("Modo Carga", load_info.get('load_mode', 'permissive'))
+                
+                # Muestra advertencia si hay líneas problemáticas
+                if load_info.get('bad_lines_count', 0) > 0:
+                    st.markdown('<div class="warning-box">', unsafe_allow_html=True)
+                    st.warning(
+                        f"⚠️ Se omitieron {load_info['bad_lines_count']} línea(s) mal formada(s). "
+                        "Estas líneas no coincidían con el número de columnas esperado."
+                    )
+                    
+                    # Muestra ejemplos de líneas problemáticas
+                    if load_info.get('bad_lines_sample'):
+                        with st.expander("📋 Ver detalles de líneas problemáticas"):
+                            for bad_line in load_info['bad_lines_sample']:
+                                st.write(
+                                    f"**Línea {bad_line['line_number']}**: "
+                                    f"esperaba {bad_line['expected_columns']} columnas, "
+                                    f"encontró {bad_line['actual_columns']}"
+                                )
+                    st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Muestra vista previa
                 st.subheader("Vista Previa de Datos")
@@ -453,23 +468,52 @@ with tab4:
             validation_results = st.session_state.validation_results
             
             with st.spinner("Generando recomendaciones..."):
+                # Analiza severidad dinámicamente
+                severity_issues = SeverityAnalyzer.analyze_severity(profile, validation_results)
+                severity_counts = SeverityAnalyzer.get_severity_counts(severity_issues)
+                
                 # Genera recomendaciones
                 rec_gen = RecommendationGenerator(profile, validation_results)
                 recommendations = rec_gen.generate_all_recommendations()
                 st.session_state.recommendations = recommendations
                 
-                # Resumen de recomendaciones
-                summary = rec_gen.get_summary_recommendations()
-                
+                # Resumen de severidad (dinámico, no placeholders)
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("🔴 Críticas", summary['critical_issues'])
+                    st.metric("🔴 Críticos", severity_counts['critical'])
                 with col2:
-                    st.metric("🟠 Graves", summary['serious_issues'])
+                    st.metric("🟠 Graves", severity_counts['severe'])
                 with col3:
-                    st.metric("🟡 Advertencias", summary['warnings'])
+                    st.metric("🟡 Advertencias", severity_counts['warnings'])
                 with col4:
-                    st.metric("📋 Total", summary['total_recommendations'])
+                    total_issues = (severity_counts['critical'] + severity_counts['severe'] + 
+                                   severity_counts['warnings'])
+                    st.metric("📋 Total", total_issues)
+                
+                # Muestra detalles de problemas detectados
+                st.divider()
+                st.subheader("⚠️ Problemas Detectados por Severidad")
+                
+                # Problemas críticos
+                if severity_issues['critical']:
+                    st.markdown("#### 🔴 CRÍTICOS")
+                    for issue in severity_issues['critical']:
+                        st.error(f"**{issue['type']}** en columna `{issue['column']}`: {issue['description']}")
+                
+                # Problemas graves
+                if severity_issues['severe']:
+                    st.markdown("#### 🟠 GRAVES")
+                    for issue in severity_issues['severe']:
+                        st.warning(f"**{issue['type']}** en columna `{issue['column']}`: {issue['description']}")
+                
+                # Advertencias
+                if severity_issues['warnings']:
+                    st.markdown("#### 🟡 ADVERTENCIAS")
+                    for issue in severity_issues['warnings']:
+                        st.info(f"**{issue['type']}** en columna `{issue['column']}`: {issue['description']}")
+                
+                if not severity_issues['critical'] and not severity_issues['severe'] and not severity_issues['warnings']:
+                    st.success("✅ No se detectaron problemas de severidad")
                 
                 st.divider()
                 

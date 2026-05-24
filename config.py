@@ -8,19 +8,23 @@ MAX_FILE_SIZE_MB = 50  # Tamaño máximo del archivo en MB
 SUPPORTED_ENCODINGS = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252', 'utf-16']
 COMMON_DELIMITERS = [',', ';', '\t', '|', ':']
 
+# Modo de carga de CSV: 'strict' (detiene si hay errores) o 'permissive' (omite líneas malas con aviso)
+CSV_LOAD_MODE = 'permissive'  # Cambiar a 'strict' para modo estricto
+BAD_LINES_THRESHOLD_WARNING = 10  # Número de líneas malas para mostrar advertencia
+
 # Umbrales para detección de problemas
 NULL_THRESHOLD_PERCENT = 40  # % mínimo de nulos para marcar como problemático
 UNIQUE_VALUES_THRESHOLD = 0.8  # Proporción de valores únicos para marcar como problemático
 CARDINALITY_WARNING_PERCENT = 95  # % de valores únicos que generan advertencia
 
+# Umbral para detección de contenido (análisis de tipo de dato basado en contenido)
+CONTENT_DETECTION_THRESHOLD = 0.70  # Si >= 70% de valores en una columna son del tipo X, validar como tipo X
+SAMPLE_SIZE_FOR_CONTENT_DETECTION = 100  # Máximo de valores a analizar para detección de contenido
+
 # Configuración de validaciones
 MIN_PASSWORD_LENGTH = 8
 PHONE_MIN_LENGTH = 7
 PHONE_MAX_LENGTH = 15
-
-# Validaciones de rango numérico
-COMMON_AGE_RANGE = (0, 120)
-COMMON_YEAR_RANGE = (1900, 2100)
 
 # Patrones de validación
 EMAIL_PATTERN = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -37,3 +41,20 @@ EMAIL_KEYWORDS = ['email', 'correo', 'mail']
 PHONE_KEYWORDS = ['telefono', 'phone', 'celular', 'mobile', 'whatsapp']
 URL_KEYWORDS = ['url', 'website', 'web', 'link']
 ID_KEYWORDS = ['id', 'codigo', 'code', 'identificador']
+
+# Configuración de validación de fechas
+ALLOWED_DATE_FORMATS = [
+    '%Y-%m-%d',           # ISO 8601: 2024-01-15
+    '%d/%m/%Y',           # Europeo: 15/01/2024
+    '%m/%d/%Y',           # Estadounidense: 01/15/2024
+    '%d-%m-%Y',           # Alternativo: 15-01-2024
+    '%Y/%m/%d',           # Alternativo: 2024/01/15
+    '%d.%m.%Y',           # Puntos: 15.01.2024
+    '%Y%m%d',             # Compacto: 20240115
+    '%d %b %Y',           # Mes abreviado: 15 Jan 2024
+    '%d %B %Y',           # Mes completo: 15 January 2024
+    '%b %d, %Y',          # US: Jan 15, 2024
+    '%B %d, %Y',          # US: January 15, 2024
+]
+DEFAULT_DAYFIRST = True  # Interpreta 01/02/03 como día/mes/año (no mes/día/año)
+DATE_FORMAT_CONSISTENCY_THRESHOLD = 0.95  # % de fechas que deben coincidir con el mismo formato

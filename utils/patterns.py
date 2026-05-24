@@ -4,6 +4,7 @@ Contiene expresiones regulares y patrones para validar diferentes tipos de datos
 """
 
 import re
+import pandas as pd
 from config import (
     EMAIL_PATTERN,
     PHONE_PATTERN,
@@ -165,6 +166,3 @@ def get_column_type_hints(column_name):
     
     return None
 
-
-# Necesario para usar pandas en las validaciones
-import pandas as pd
