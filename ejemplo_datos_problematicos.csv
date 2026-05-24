@@ -1,0 +1,31 @@
+id,nombre,apellido,email,telefono,edad,fecha_registro,ciudad,salario,activo
+1,Juan,Pérez,juan.perez@gmail.com,+34912345678,28,2023-01-15,Madrid,45000,Si
+2,María,García,,555-1234,35,2023-01-16,Barcelona,52000,Si
+3,Carlos,López,carlos@hotmail.com,34912345679,  ,2023-01-17,Valencia,48000,No
+4,Ana,Martínez,ANA.MARTINEZ@YAHOO.COM,,42,01/02/2023,Sevilla,55000,Si
+5,Juan,Pérez,juan.perez@gmail.com,+34912345678,28,2023-01-15,Madrid,45000,Si
+6,Pedro,Sánchez,pedro.sanchez@email,666777888,31,2023-01-18,Bilbao,50000,Si
+7,Laura,Rodríguez,laura@example.com,,45,02-01-2023,Alicante,58000,No
+8,Miguel,Fernández,miguel.f@,699888777,-5,2023-01-19,Málaga,46000,Si
+9,Isabel,López,,712345678,52,2023/01/20,Córdoba,60000,Si
+10,Diego,Martínez,diego123456@gmail.com,+34 912 345 670,29,2023-01-21,Sevilla,47000,Si
+11,  Patricia  ,González,patricia@gmail.com,555@2222,38,2023-01-22,Valencia,,Si
+12,Roberto,Giménez,robGi@hotmail.com,+34912345671,33,Jan 23 2023,Barcelona,51000,No
+13,Helena,Ruiz,helena.ruiz@gmail.com,,55,  ,Madrid,62000,Si
+14,Francisco,Cabrera,francisco@invalid..com,667788999,44,2023-01-24,Almería,54000,Si
+15,Marta,Villena,marta@gmail.com,+34912345672,26,2023-01-25,Valencia,49000,Si
+16,Luis,Arias,,999111222,150,2023-01-26,Murcia,48000,No
+17,Cristina,Paz,cristina@example.com,+34 912 345 673,36,,Granada,56000,Si
+18,Eduardo,Molina,INVALID_EMAIL,679888777,31,2023-01-28,Jaén,50000,Si
+19,Sofía,Delgado,sofia.delgado@gmail.com,,28,2023-01-29,Huelva,45000,Si
+20,Javier,Torres,javier@com.es.uk,+34912345674,41,2023-02-01,Cádiz,57000,No
+21,Natalia,Ibáñez,natalia@hotmail.com,555-1111,33,2023-02-02,Córdoba,51000,Si
+22,Ángel,Rueda,,712345679,25,,Valladolid,46000,Si
+23,Rocío,Castro,rocio@example.com,+34 912 345 675,39,2023-02-04,Palma,58000,No
+24,Héctor,Lozano,hector.lozano@,699888778,45,-10,2023-02-05,Ibiza,59000,Si
+25,Eva,Suárez,eva_suarez@gmail.com,,31,2023-02-06,Toledo,49000,Si
+26,Ignacio,Vázquez,IGNACIO@GMAIL.COM,667788900,28,02/02/2023,Alcalá,47000,Si
+27,Silvia,Navarro,silvia@invalid,+34912345676,37,,Barcelona,54000,No
+28,Víctor,Jiménez,,555-2222,43,2023-02-08,Burgos,56000,Si
+29,Lorena,Reyes,lorena.reyes@example.com,+34 912 345 677,29,Feb 09 2023,Córdoba,48000,Si
+30,Andrés,Prieto,ANDRES@HOTMAIL.COM,,52,2023-02-10,Salamanca,61000,No

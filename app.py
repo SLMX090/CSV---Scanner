@@ -1,0 +1,659 @@
+"""
+Aplicación Principal de Análisis de Calidad de Datos CSV
+=========================================================
+
+Plataforma local para analizar archivos CSV antes de cargarlos a una base de datos.
+Detecta problemas de calidad de datos y genera recomendaciones de limpieza.
+
+Autor: Sistema de Análisis de Datos
+Versión: 1.0.0
+"""
+
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+import os
+
+# Importa módulos personalizados
+from modules.csv_loader import CSVLoader, CSVLoadError
+from modules.data_profiler import DataProfiler
+from modules.validators import DataValidator
+from modules.recommendations import RecommendationGenerator
+from modules.report_generator import ReportGenerator
+
+
+# Configuración de la página
+st.set_page_config(
+    page_title="Analizador de Datos CSV",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Estilos personalizados
+st.markdown("""
+<style>
+    .main-title {
+        color: #2c3e50;
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    .warning-box {
+        background-color: #fff3cd;
+        border: 1px solid #ffc107;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    .error-box {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    .success-box {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Título principal
+st.markdown("# 📊 Analizador de Calidad de Datos CSV", unsafe_allow_html=True)
+st.markdown("""
+Plataforma para analizar archivos CSV, detectar problemas de calidad de datos 
+y generar recomendaciones de limpieza y validación para bases de datos.
+""")
+
+st.divider()
+
+# Barra lateral de configuración
+with st.sidebar:
+    st.header("⚙️ Configuración")
+    
+    st.subheader("Opciones de Carga")
+    delimiter_manual = st.checkbox("Especificar delimitador manualmente", value=False)
+    delimiter = None
+    if delimiter_manual:
+        delimiter = st.selectbox(
+            "Selecciona el delimitador:",
+            [',', ';', '\t', '|', ':'],
+            index=0
+        )
+    
+    encoding_manual = st.checkbox("Especificar codificación manualmente", value=False)
+    encoding = None
+    if encoding_manual:
+        encoding = st.selectbox(
+            "Selecciona la codificación:",
+            ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252'],
+            index=0
+        )
+    
+    st.divider()
+    
+    st.subheader("Opciones de Reporte")
+    export_format = st.multiselect(
+        "Formatos de exportación:",
+        ['Excel', 'HTML'],
+        default=['Excel']
+    )
+    
+    st.divider()
+    st.info("""
+    **Consejos de Uso:**
+    - Carga un archivo CSV pequeño primero para probar
+    - Si el análisis es lento, el archivo puede ser muy grande
+    - Revisa todas las pestañas del reporte
+    """)
+
+
+# Sección principal
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📥 Cargar Archivo",
+    "📈 Análisis",
+    "✅ Validaciones",
+    "💡 Recomendaciones",
+    "📋 Datos Problemáticos",
+    "📥 Descargar Reporte"
+])
+
+# ============================================================================
+# TAB 1: CARGA DE ARCHIVO
+# ============================================================================
+with tab1:
+    st.header("Carga de Archivo CSV")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        uploaded_file = st.file_uploader(
+            "Selecciona un archivo CSV",
+            type=['csv'],
+            help="Soporta archivos CSV con diferentes delimitadores y codificaciones"
+        )
+    
+    with col2:
+        if uploaded_file:
+            st.metric("Tamaño", f"{uploaded_file.size / 1024:.2f} KB")
+    
+    if uploaded_file:
+        st.divider()
+        
+        # Intenta cargar el archivo
+        with st.spinner("Cargando archivo..."):
+            try:
+                df, load_info = CSVLoader.load_csv(
+                    uploaded_file,
+                    delimiter=delimiter,
+                    encoding=encoding
+                )
+                
+                # Guarda en sesión
+                st.session_state.df = df
+                st.session_state.load_info = load_info
+                
+                # Muestra información de carga
+                st.markdown('<div class="success-box">', unsafe_allow_html=True)
+                st.success("✅ Archivo cargado correctamente")
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Filas", load_info['rows'])
+                with col2:
+                    st.metric("Columnas", load_info['columns'])
+                with col3:
+                    st.metric("Delimitador", f"'{load_info['delimiter']}'")
+                
+                # Muestra vista previa
+                st.subheader("Vista Previa de Datos")
+                st.dataframe(
+                    df.head(10),
+                    use_container_width=True,
+                    height=300
+                )
+                
+            except CSVLoadError as e:
+                st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                st.error(f"❌ Error al cargar el archivo:\n{str(e)}")
+                st.markdown('</div>', unsafe_allow_html=True)
+            except Exception as e:
+                st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                st.error(f"❌ Error inesperado:\n{str(e)}")
+                st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.info("👆 Carga un archivo CSV para comenzar el análisis")
+
+
+# ============================================================================
+# TAB 2: ANÁLISIS
+# ============================================================================
+with tab2:
+    if 'df' not in st.session_state:
+        st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
+    else:
+        st.header("Análisis de Calidad de Datos")
+        
+        df = st.session_state.df
+        
+        with st.spinner("Generando perfil de datos..."):
+            # Genera el perfil
+            profiler = DataProfiler(df)
+            profile = profiler.generate_profile()
+            st.session_state.profile = profile
+            
+            # Información General
+            st.subheader("📊 Información General")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total de Filas", profile['general_info']['total_rows'])
+            with col2:
+                st.metric("Total de Columnas", profile['general_info']['total_columns'])
+            with col3:
+                st.metric("Total de Celdas", profile['general_info']['total_cells'])
+            with col4:
+                st.metric("Memoria Usada", f"{profile['memory_usage']:.2f} MB")
+            
+            # Análisis de Nulos
+            st.subheader("❌ Análisis de Valores Nulos")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(
+                    "Celdas Nulas Totales",
+                    profile['null_analysis']['total_null_cells']
+                )
+            with col2:
+                st.metric(
+                    "% Nulos Global",
+                    f"{profile['null_analysis']['null_percent_overall']:.2f}%"
+                )
+            with col3:
+                st.metric(
+                    "Columnas Problemáticas",
+                    len(profile['null_analysis']['problematic_columns'])
+                )
+            
+            # Detalle de nulos por columna
+            if profile['null_analysis']['by_column']:
+                null_df = pd.DataFrame([
+                    {
+                        'Columna': col,
+                        'Nulos': info['count'],
+                        '% Nulos': f"{info['percent']:.2f}%"
+                    }
+                    for col, info in profile['null_analysis']['by_column'].items()
+                    if info['count'] > 0
+                ]).sort_values('Nulos', ascending=False)
+                
+                st.dataframe(null_df, use_container_width=True)
+            
+            # Análisis de Duplicados
+            st.subheader("🔄 Análisis de Duplicados")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.metric(
+                    "Filas Duplicadas",
+                    profile['duplicates']['total_duplicates']
+                )
+            with col2:
+                st.metric(
+                    "% Duplicados",
+                    f"{profile['duplicates']['duplicates_percent']:.2f}%"
+                )
+            
+            # Análisis de Strings Vacíos
+            st.subheader("⚫ Cadenas Vacías o Solo Espacios")
+            if profile['empty_strings']['columns_with_empty']:
+                empty_df = pd.DataFrame([
+                    {
+                        'Columna': col,
+                        'Cantidad': info['count'],
+                        '% Vacías': f"{info['percent']:.2f}%"
+                    }
+                    for col, info in profile['empty_strings']['columns_with_empty'].items()
+                ]).sort_values('Cantidad', ascending=False)
+                
+                st.dataframe(empty_df, use_container_width=True)
+            else:
+                st.success("✅ No se detectaron cadenas vacías o solo espacios")
+            
+            # Mezcla de Tipos de Datos
+            st.subheader("🔀 Columnas con Mezcla de Tipos")
+            if profile['data_type_issues']:
+                st.warning("⚠️ Se detectaron columnas con múltiples tipos de datos:")
+                for col, issues in profile['data_type_issues'].items():
+                    with st.expander(f"📋 {col}"):
+                        st.write("Tipos detectados:", issues['detected_types'])
+                        st.write("Problemático:", "SÍ" if issues['is_problematic'] else "NO")
+            else:
+                st.success("✅ Todos los datos de cada columna son del mismo tipo")
+            
+            # Cardinalidad de Columnas
+            st.subheader("🎯 Cardinalidad de Columnas")
+            high_cardinality = [
+                {
+                    'Columna': col,
+                    'Únicos': profile['column_profiles'][col]['unique_count'],
+                    'Cardinalidad %': f"{profile['column_profiles'][col]['cardinality_ratio']*100:.2f}%"
+                }
+                for col in profile['column_profiles']
+                if profile['column_profiles'][col]['cardinality_ratio'] >= 0.80
+            ]
+            
+            if high_cardinality:
+                high_card_df = pd.DataFrame(high_cardinality).sort_values('Cardinalidad %', ascending=False)
+                st.dataframe(high_card_df, use_container_width=True)
+            else:
+                st.info("ℹ️ Todas las columnas tienen cardinalidad moderada")
+
+
+# ============================================================================
+# TAB 3: VALIDACIONES
+# ============================================================================
+with tab3:
+    if 'df' not in st.session_state:
+        st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
+    else:
+        st.header("Validaciones de Datos")
+        
+        df = st.session_state.df
+        
+        with st.spinner("Ejecutando validaciones..."):
+            # Realiza validaciones
+            validator = DataValidator(df)
+            validation_results = validator.validate_all()
+            st.session_state.validation_results = validation_results
+            
+            # Validación de Emails
+            if validation_results['email_validation']:
+                st.subheader("📧 Validación de Emails")
+                for col, info in validation_results['email_validation'].items():
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric(f"{col} - Válidos", info['valid_count'])
+                    with col2:
+                        st.metric(f"{col} - Inválidos", info['invalid_count'])
+                    with col3:
+                        status = "🔴 PROBLEMA" if info['is_problematic'] else "🟢 OK"
+                        st.metric(f"{col} - Estado", status)
+                    
+                    if info['examples_invalid']:
+                        with st.expander(f"Ver ejemplos inválidos de {col}"):
+                            st.dataframe(pd.DataFrame(info['examples_invalid']))
+            
+            # Validación de Teléfonos
+            if validation_results['phone_validation']:
+                st.subheader("📱 Validación de Teléfonos")
+                for col, info in validation_results['phone_validation'].items():
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric(f"{col} - Válidos", info['valid_count'])
+                    with col2:
+                        st.metric(f"{col} - Inválidos", info['invalid_count'])
+                    with col3:
+                        status = "🔴 PROBLEMA" if info['is_problematic'] else "🟢 OK"
+                        st.metric(f"{col} - Estado", status)
+                    
+                    if info['examples_invalid']:
+                        with st.expander(f"Ver ejemplos inválidos de {col}"):
+                            st.dataframe(pd.DataFrame(info['examples_invalid']))
+            
+            # Validación de Fechas
+            if validation_results['date_validation']:
+                st.subheader("📅 Validación de Fechas")
+                for col, info in validation_results['date_validation'].items():
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric(f"{col} - Válidas", info['valid_count'])
+                    with col2:
+                        st.metric(f"{col} - Inválidas", info['invalid_count'])
+                    with col3:
+                        status = "🔴 PROBLEMA" if info['is_problematic'] else "🟢 OK"
+                        st.metric(f"{col} - Estado", status)
+                    
+                    if info['examples_invalid']:
+                        with st.expander(f"Ver ejemplos inválidos de {col}"):
+                            st.dataframe(pd.DataFrame(info['examples_invalid']))
+            
+            # Validación Numérica
+            if validation_results['numeric_validation']:
+                st.subheader("🔢 Validación Numérica")
+                for col, info in validation_results['numeric_validation'].items():
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric(f"{col} - Mín", f"{info['min']:.2f}")
+                    with col2:
+                        st.metric(f"{col} - Máx", f"{info['max']:.2f}")
+                    with col3:
+                        if info['negative_count'] > 0:
+                            st.metric(f"{col} - Negativos", info['negative_count'])
+            
+            # Validación de Texto
+            if validation_results['text_validation']:
+                st.subheader("📝 Validación de Texto")
+                for col, info in validation_results['text_validation'].items():
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric(
+                            f"{col} - Caract. Especiales",
+                            info['special_chars_count']
+                        )
+                    with col2:
+                        st.metric(
+                            f"{col} - Espacios Inicio/Final",
+                            info['leading_trailing_spaces']
+                        )
+                    
+                    if info['examples']:
+                        with st.expander(f"Ver ejemplos de {col}"):
+                            st.dataframe(pd.DataFrame(info['examples']))
+            
+            # URLs
+            if validation_results['url_validation']:
+                st.subheader("🌐 Validación de URLs")
+                for col, info in validation_results['url_validation'].items():
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric(f"{col} - Válidas", info['valid_count'])
+                    with col2:
+                        st.metric(f"{col} - Inválidas", info['invalid_count'])
+                    with col3:
+                        status = "🔴 PROBLEMA" if info['is_problematic'] else "🟢 OK"
+                        st.metric(f"{col} - Estado", status)
+
+
+# ============================================================================
+# TAB 4: RECOMENDACIONES
+# ============================================================================
+with tab4:
+    if 'df' not in st.session_state:
+        st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
+    else:
+        st.header("Recomendaciones de Limpieza y Validación")
+        
+        if 'profile' not in st.session_state or 'validation_results' not in st.session_state:
+            st.warning("⚠️ Ejecuta primero el análisis en las pestañas anteriores")
+        else:
+            df = st.session_state.df
+            profile = st.session_state.profile
+            validation_results = st.session_state.validation_results
+            
+            with st.spinner("Generando recomendaciones..."):
+                # Genera recomendaciones
+                rec_gen = RecommendationGenerator(profile, validation_results)
+                recommendations = rec_gen.generate_all_recommendations()
+                st.session_state.recommendations = recommendations
+                
+                # Resumen de recomendaciones
+                summary = rec_gen.get_summary_recommendations()
+                
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("🔴 Críticas", summary['critical_issues'])
+                with col2:
+                    st.metric("🟠 Graves", summary['serious_issues'])
+                with col3:
+                    st.metric("🟡 Advertencias", summary['warnings'])
+                with col4:
+                    st.metric("📋 Total", summary['total_recommendations'])
+                
+                st.divider()
+                
+                # Recomendaciones de Limpieza
+                st.subheader("🧹 Recomendaciones de Limpieza")
+                cleaning_recs = recommendations['cleaning']
+                if cleaning_recs:
+                    for rec in cleaning_recs:
+                        severity_color = {
+                            'CRÍTICO': '🔴',
+                            'GRAVE': '🟠',
+                            'AVISO': '🟡'
+                        }.get(rec['severity'], '⚪')
+                        
+                        with st.expander(f"{severity_color} {rec['column']} - {rec['severity']}"):
+                            st.write(f"**Recomendación:** {rec['recommendation']}")
+                            st.write(f"**Acción:** {rec['action']}")
+                            st.write(f"**Detalles:** {rec['details']}")
+                else:
+                    st.success("✅ No hay problemas de limpieza detectados")
+                
+                st.divider()
+                
+                # Reglas para Base de Datos
+                st.subheader("🗄️ Reglas Sugeridas para Base de Datos")
+                db_rules = recommendations['database_rules']
+                if db_rules:
+                    for rule in db_rules[:15]:
+                        with st.expander(f"📌 {rule.get('rule_type', '')} - {rule.get('column', '')}"):
+                            st.write(f"**Razón:** {rule.get('reason', '')}")
+                            if 'sql_constraint' in rule:
+                                st.code(rule['sql_constraint'], language='sql')
+                            if 'description' in rule:
+                                st.write(f"**Descripción:** {rule['description']}")
+                else:
+                    st.info("ℹ️ No hay reglas sugeridas en este momento")
+                
+                st.divider()
+                
+                # Normalización
+                st.subheader("🔧 Recomendaciones de Normalización")
+                norm_recs = recommendations['normalization']
+                if norm_recs:
+                    for rec in norm_recs:
+                        with st.expander(f"🔨 {rec['type']} - {rec['column']}"):
+                            st.write(f"**Operación:** `{rec['operation']}`")
+                            st.write(f"**Razón:** {rec['reason']}")
+                            if 'examples' in rec:
+                                st.write(f"**Ejemplo:** {rec['examples']}")
+                else:
+                    st.success("✅ No se requieren normalizaciones especiales")
+
+
+# ============================================================================
+# TAB 5: DATOS PROBLEMÁTICOS
+# ============================================================================
+with tab5:
+    if 'df' not in st.session_state:
+        st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
+    else:
+        st.header("Muestras de Datos Problemáticos")
+        
+        df = st.session_state.df
+        
+        if 'profile' not in st.session_state:
+            st.warning("⚠️ Ejecuta primero el análisis")
+        else:
+            profile = st.session_state.profile
+            
+            # Filas Duplicadas
+            if profile['duplicates']['examples']:
+                st.subheader("🔄 Filas Duplicadas (Ejemplos)")
+                dup_df = pd.DataFrame(profile['duplicates']['examples'])
+                st.dataframe(dup_df, use_container_width=True)
+            else:
+                st.success("✅ No se encontraron filas duplicadas")
+            
+            st.divider()
+            
+            # Columnas con muchos nulos
+            st.subheader("❌ Columnas Problemáticas por Nulos")
+            problematic_cols = profile['null_analysis']['problematic_columns']
+            if problematic_cols:
+                for col, info in problematic_cols.items():
+                    st.warning(
+                        f"**{col}**: {info['null_count']} nulos "
+                        f"({info['null_percent']:.1f}%) - Estado: {info['status']}"
+                    )
+            else:
+                st.success("✅ No hay columnas problemáticas por nulos")
+            
+            st.divider()
+            
+            # Columnas con mezcla de tipos
+            st.subheader("🔀 Columnas con Mezcla de Tipos")
+            type_issues = profile['data_type_issues']
+            if type_issues:
+                for col, issues in type_issues.items():
+                    st.warning(f"**{col}**: {issues['detected_types']}")
+            else:
+                st.success("✅ Todas las columnas tienen tipos de datos consistentes")
+
+
+# ============================================================================
+# TAB 6: DESCARGAR REPORTE
+# ============================================================================
+with tab6:
+    st.header("Descarga de Reportes")
+    
+    if 'df' not in st.session_state:
+        st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
+    elif 'profile' not in st.session_state:
+        st.warning("⚠️ Ejecuta primero el análisis en las pestañas anteriores")
+    else:
+        st.success("✅ Todos los análisis completados. Puedes descargar los reportes.")
+        
+        df = st.session_state.df
+        profile = st.session_state.profile
+        validation_results = st.session_state.validation_results
+        recommendations = st.session_state.recommendations
+        
+        # Genera nombre del archivo
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename_base = f"reporte_datos_{timestamp}"
+        
+        # Generador de reportes
+        report_gen = ReportGenerator(df, profile, validation_results, recommendations)
+        
+        col1, col2 = st.columns(2)
+        
+        # Exportar Excel
+        with col1:
+            if st.button("📊 Generar Reporte Excel", key="excel_btn", use_container_width=True):
+                with st.spinner("Generando reporte Excel..."):
+                    try:
+                        filepath = report_gen.generate_excel_report(filename_base)
+                        
+                        # Lee el archivo para descargar
+                        with open(filepath, 'rb') as f:
+                            excel_data = f.read()
+                        
+                        st.download_button(
+                            label="⬇️ Descargar Excel",
+                            data=excel_data,
+                            file_name=f"{filename_base}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        
+                        st.success(f"✅ Reporte guardado en: {filepath}")
+                    except Exception as e:
+                        st.error(f"❌ Error al generar Excel: {str(e)}")
+        
+        # Exportar HTML
+        with col2:
+            if st.button("🌐 Generar Reporte HTML", key="html_btn", use_container_width=True):
+                with st.spinner("Generando reporte HTML..."):
+                    try:
+                        filepath = report_gen.generate_html_report(filename_base)
+                        
+                        # Lee el archivo para descargar
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            html_data = f.read()
+                        
+                        st.download_button(
+                            label="⬇️ Descargar HTML",
+                            data=html_data,
+                            file_name=f"{filename_base}.html",
+                            mime="text/html"
+                        )
+                        
+                        st.success(f"✅ Reporte guardado en: {filepath}")
+                    except Exception as e:
+                        st.error(f"❌ Error al generar HTML: {str(e)}")
+        
+        st.divider()
+        st.info("💾 Los reportes se guardan en la carpeta `output/` del proyecto")
+
+
+# ============================================================================
+# FOOTER
+# ============================================================================
+st.divider()
+st.markdown("""
+---
+**Analizador de Calidad de Datos CSV** | Versión 1.0.0
+Desarrollado para análisis de datos antes de cargar a base de datos
+""")

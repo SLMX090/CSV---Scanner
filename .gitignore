@@ -1,0 +1,38 @@
+# Entorno virtual
+venv/
+env/
+ENV/
+.venv
+
+# Pycache y archivos compilados
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Reportes generados
+output/
+*.xlsx
+*.html
+
+# Archivos temporales
+*.tmp
+*.bak
+.streamlit/
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local

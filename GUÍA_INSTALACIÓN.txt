@@ -1,0 +1,217 @@
+# GUÍA DE INSTALACIÓN Y EJECUCIÓN
+
+## 🚀 Instalación Rápida (5 minutos)
+
+### Paso 1: Verificar Python
+Abre una terminal/CMD y ejecuta:
+```bash
+python --version
+```
+Debes tener Python 3.8 o superior. Si no lo tienes, descárgalo de: https://www.python.org/
+
+### Paso 2: Instalar Dependencias
+En la carpeta del proyecto (donde está `requirements.txt`), ejecuta:
+
+**Windows:**
+```bash
+pip install -r requirements.txt
+```
+
+**macOS/Linux:**
+```bash
+pip3 install -r requirements.txt
+```
+
+### Paso 3: Ejecutar la Aplicación
+```bash
+streamlit run app.py
+```
+
+La aplicación se abrirá automáticamente en tu navegador en `http://localhost:8501`
+
+---
+
+## 📖 Uso de la Aplicación
+
+### Primera Carga (Prueba rápida)
+1. Ve a la pestaña **"Cargar Archivo"**
+2. Carga el archivo: `ejemplo_datos_problematicos.csv`
+3. Haz clic en cada pestaña para ver el análisis
+4. Descarga el reporte en Excel o HTML
+
+### Cargar tu propio CSV
+1. Pestaña **"Cargar Archivo"**
+2. Selecciona tu archivo CSV
+3. Si hay problemas, especifica el delimitador en la barra lateral
+4. El análisis se ejecuta automáticamente
+
+### Interpretar Resultados
+
+**Pestaña "Análisis":**
+- Muestra estadísticas generales
+- Identifica problemas de calidad
+- Grafica información
+
+**Pestaña "Validaciones":**
+- Valida emails, teléfonos, fechas
+- Detecta errores de formato
+- Muestra ejemplos problemáticos
+
+**Pestaña "Recomendaciones":**
+- Sugerencias de limpieza
+- Reglas SQL para base de datos
+- Operaciones de normalización
+
+**Pestaña "Descargar Reporte":**
+- Genera reportes en Excel/HTML
+- Se guardan en carpeta `output/`
+
+---
+
+## 🔧 Solución de Problemas
+
+### Error: "Command not found: streamlit"
+**Solución:** Instala streamlit manualmente
+```bash
+pip install streamlit
+```
+
+### Error: "ModuleNotFoundError: No module named 'pandas'"
+**Solución:** Reinstala todas las dependencias
+```bash
+pip install -r requirements.txt --force-reinstall
+```
+
+### Error: "Archivo demasiado grande"
+**Solución:** Edita `config.py` línea 3
+```python
+MAX_FILE_SIZE_MB = 100  # Cambiar a valor mayor
+```
+
+### La aplicación se ejecuta lentamente
+**Solución:** 
+- Prueba con un subset del archivo
+- O aumenta `MAX_FILE_SIZE_MB` en `config.py`
+
+### El delimitador no se detecta correctamente
+**Solución:** 
+- Marca "Especificar delimitador manualmente" en la barra lateral
+- Selecciona el delimitador correcto (`,`, `;`, `\t`, `|`, `:`)
+
+---
+
+## 📊 Ejemplo Completo
+
+### Archivo CSV con problemas:
+```csv
+id,nombre,email,edad
+1,Juan,juan@gmail.com,28
+2,María,,35
+3,Carlos,carlos@invalid,45
+,Pedro,pedro@gmail.com,
+```
+
+### Lo que detectará la aplicación:
+✅ 1 valor nulo en `email` (25%)
+✅ 1 email inválido
+✅ 1 edad nula
+✅ 1 fila sin id
+
+### Recomendaciones generadas:
+💡 "Definir si la columna 'email' es obligatoria"
+💡 "Validar formato de emails antes de insertar en BD"
+💡 "Asegurar que 'id' es clave única y NOT NULL"
+
+---
+
+## 💾 Archivos Generados
+
+Después de ejecutar análisis y descargar reportes:
+
+```
+csv-data-analyzer/
+└── output/
+    ├── reporte_datos_20240523_144530.xlsx
+    ├── reporte_datos_20240523_144530.html
+    └── [más reportes...]
+```
+
+Cada reporte incluye:
+- Resumen ejecutivo
+- Información general
+- Análisis de nulos
+- Análisis de duplicados
+- Perfil de columnas
+- Validaciones
+- Recomendaciones de limpieza
+- Reglas para base de datos
+- Operaciones de normalización
+
+---
+
+## 🎓 Conceptos Educativos
+
+Este proyecto enseña:
+
+1. **Carga de datos** → `csv_loader.py`
+   - Manejo de diferentes delimitadores y codificaciones
+
+2. **Análisis de datos** → `data_profiler.py`
+   - Estadísticas descriptivas
+   - Identificación de patrones
+
+3. **Validaciones** → `validators.py`
+   - Expresiones regulares
+   - Validación de formatos
+
+4. **Generación de reportes** → `report_generator.py`
+   - Exportación a Excel
+   - Creación de HTML
+
+5. **Interfaz web** → `app.py`
+   - Aplicación interactiva con Streamlit
+   - Interacción usuario-sistema
+
+---
+
+## 📚 Estructura de Carpetas
+
+```
+csv-data-analyzer/               # Raíz del proyecto
+│
+├── app.py                       # Aplicación principal
+├── config.py                    # Configuración
+├── requirements.txt             # Dependencias
+├── README.md                    # Documentación completa
+├── GUÍA_INSTALACIÓN.txt         # Este archivo
+│
+├── modules/                     # Código principal
+│   ├── csv_loader.py           # Cargar archivos
+│   ├── data_profiler.py        # Analizar datos
+│   ├── validators.py           # Validar datos
+│   ├── recommendations.py      # Generar sugerencias
+│   └── report_generator.py     # Exportar reportes
+│
+├── utils/                       # Funciones auxiliares
+│   ├── helpers.py              # Funciones útiles
+│   └── patterns.py             # Patrones de validación
+│
+├── output/                      # Reportes generados
+│   └── [archivos .xlsx y .html]
+│
+└── ejemplo_datos_problematicos.csv  # Archivo de prueba
+```
+
+---
+
+## ✨ Próximos Pasos
+
+1. ✅ Instala el proyecto
+2. ✅ Prueba con `ejemplo_datos_problematicos.csv`
+3. ✅ Lee las recomendaciones generadas
+4. ✅ Descarga un reporte en Excel
+5. ✅ Experimenta con tus propios datos
+
+---
+
+**¡Listo para analizar tus datos! 🎉**
