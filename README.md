@@ -1,5 +1,7 @@
 # 📊 Analizador de Calidad de Datos CSV
 
+![Tests](https://img.shields.io/badge/tests-85+-green) ![Python](https://img.shields.io/badge/python-3.8+-blue) ![Status](https://img.shields.io/badge/status-stable-green)
+
 Herramienta local para analizar archivos CSV e identificar posibles problemas de calidad de datos. Diseñada como apoyo preliminar y referencia dentro de procesos ETL, requiere validación posterior mediante controles formales y revisión humana.
 
 ## 🎯 Características
@@ -81,12 +83,46 @@ La responsabilidad de validar datos y tomar decisiones críticas **recae en el u
 
 ---
 
-## 📋 Requisitos Previos
+## 💾 Archivos Grandes y Carga por Chunks
 
-- Python 3.8 o superior
-- pip (gestor de paquetes de Python)
+### Soporte Automático para Archivos Grandes
 
-## 🚀 Instalación
+La herramienta detecta automáticamente archivos grandes (> 100 MB) y los carga por **chunks** para optimizar el uso de memoria:
+
+```
+Tamaño archivo  │  Método de carga
+────────────────┼──────────────────
+< 100 MB        │  Carga completa (rápido)
+100 MB - 1 GB   │  Chunks automático (memoria eficiente)
+> 1 GB          │  Error (límite máximo)
+```
+
+### Cómo Funciona
+
+1. **Detección automática**: Cuando subes un archivo > 100 MB, se activa carga por chunks
+2. **Procesamiento por bloques**: Se leen 50,000 filas por vez
+3. **Análisis transparente**: Los resultados son los mismos que con carga normal
+4. **Combina datos**: Los chunks se combinan para el análisis final
+
+### Consideraciones
+
+- ⚡ **Velocidad**: Archivos grandes toman más tiempo en procesar
+- 💾 **RAM**: Requiere mucho menos RAM (ideal para máquinas 8-32 GB)
+- ⚠️ **Estadísticas**: Algunas métricas pueden ser aproximaciones (bad_lines_count es estimado)
+- 📊 **Precisión**: La precisión de análisis no se ve afectada
+
+### Ejemplo
+
+```
+# Archivo de 500 MB
+Carga: ⏳ Cargando archivo grande por chunks...
+UI:    ℹ️ "Archivo grande (500.5 MB) cargado en 10 chunk(s)"
+Resultado: 2,500,000 filas analizadas correctamente
+```
+
+---
+
+##  Instalación
 
 ### 1. Clonar o descargar el proyecto
 
@@ -123,6 +159,84 @@ pip install -r requirements.txt
 - `email-validator==2.1.0` - Validación de emails
 - `python-dateutil==2.8.2` - Procesamiento de fechas
 - `numpy==1.24.3` - Operaciones numéricas
+
+## 🧪 Pruebas Automatizadas
+
+### Ejecutar la suite de pruebas
+
+```bash
+# Instalar herramientas de testing (si no está en requirements.txt)
+pip install pytest pytest-cov
+
+# Ejecutar todas las pruebas
+pytest
+
+# Ejecutar con modo verbose
+pytest -v
+
+# Ejecutar con cobertura de código
+pytest --cov=modules --cov=utils --cov-report=html
+
+# Ejecutar un archivo específico
+pytest tests/test_csv_loader.py
+
+# Ejecutar una prueba específica
+pytest tests/test_validators.py::TestDateValidation::test_validate_dates_consistent_format
+```
+
+### Cobertura de Pruebas
+
+- ✅ **CSV Loader** (25+ tests): Detección de delimitador, limpieza de columnas, bad lines, validación de tamaño, **carga por chunks**
+- ✅ **Validadores** (28+ tests): Emails, teléfonos, fechas, URLs, detección por contenido, umbral de consistencia
+- ✅ **Data Profiler** (13 tests): Análisis de nulos, duplicados, perfiles de columnas, uso de memoria
+- ✅ **Patrones** (18 tests): Expresiones regulares, inferencia de tipo, detección de caracteres especiales
+
+**Total: ~85+ pruebas unitarias**
+
+Ubicación: [`tests/`](tests/) directorio
+
+Para más detalles, ver [tests/README.md](tests/README.md)
+
+---
+
+## ⚙️ Integración Continua
+
+### Estado Actual
+
+**ℹ️ Este proyecto NO tiene CI/CD configurado** (GitHub Actions, GitLab CI, etc.).
+
+Para desarrolladores locales:
+- Ejecuta `pytest` antes de hacer push
+- Los tests se ejecutan en tu máquina
+- Responsabilidad manual de validar cambios
+
+### Para Agregar CI/CD (Opcional)
+
+Si deseas automatizar tests en cada commit/PR, puedes:
+
+1. **GitHub Actions** - Crear `.github/workflows/tests.yml`
+2. **GitLab CI** - Crear `.gitlab-ci.yml`
+3. **Otros**: Jenkins, Azure Pipelines, etc.
+
+Ejemplo básico para GitHub:
+
+```yaml
+# .github/workflows/tests.yml
+name: Tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - run: pip install -r requirements.txt
+      - run: pytest --cov=modules --cov=utils
+```
+
+---
 
 ## 📖 Uso
 

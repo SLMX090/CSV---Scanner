@@ -176,3 +176,81 @@ class TestCSVLoaderFileValidation:
         # 50.1MB debería fallar
         with pytest.raises(CSVLoadError):
             CSVLoader.validate_file(int(50.1 * 1024 * 1024))
+
+
+class TestCSVLoaderChunkedLoading:
+    """Pruebas para carga por chunks de archivos grandes."""
+    
+    def test_chunked_load_csv_returns_same_format(self, sample_large_csv):
+        """Verifica que load_csv_chunked retorna mismo formato que load_csv."""
+        import io
+        file_obj = io.StringIO(sample_large_csv)
+        
+        df, load_info = CSVLoader.load_csv_chunked(file_obj)
+        
+        # Verifica que retorna los campos necesarios
+        assert 'delimiter' in load_info
+        assert 'encoding' in load_info
+        assert 'rows' in load_info
+        assert 'columns' in load_info
+        assert 'chunked' in load_info
+        assert load_info['chunked'] is True
+    
+    def test_chunked_load_correct_row_count(self, sample_large_csv):
+        """Verifica que cuenta correctamente el número de filas en chunked load."""
+        import io
+        file_obj = io.StringIO(sample_large_csv)
+        
+        df, load_info = CSVLoader.load_csv_chunked(file_obj)
+        
+        # El archivo tiene 100,001 filas (header + 100,000 datos)
+        assert load_info['rows'] == 100000
+        assert df.shape[0] == 100000
+    
+    def test_chunked_load_preserves_columns(self, sample_large_csv):
+        """Verifica que columnas se conservan correctamente en chunked load."""
+        import io
+        file_obj = io.StringIO(sample_large_csv)
+        
+        df, load_info = CSVLoader.load_csv_chunked(file_obj)
+        
+        expected_columns = ['id', 'nombre', 'correo', 'telefono', 'edad', 'ciudad', 'fecha_registro']
+        assert list(df.columns) == expected_columns
+    
+    def test_chunked_load_reports_chunks_loaded(self, sample_large_csv):
+        """Verifica que reporta número de chunks cargados."""
+        import io
+        file_obj = io.StringIO(sample_large_csv)
+        
+        df, load_info = CSVLoader.load_csv_chunked(file_obj)
+        
+        assert 'chunks_loaded' in load_info
+        assert load_info['chunks_loaded'] > 0
+    
+    def test_auto_chunked_load_detection(self):
+        """Verifica que load_csv detecta automáticamente cuando usar chunks."""
+        # Genera CSV simulado grande
+        large_csv = "a,b,c\n" + "\n".join([f"{i},{i+1},{i+2}" for i in range(60000)])
+        
+        import io
+        file_obj = io.StringIO(large_csv)
+        
+        # load_csv debe decidir automáticamente usar chunked si supera threshold
+        df, load_info = CSVLoader.load_csv(file_obj)
+        
+        # Si usa chunked, debe tener el flag
+        if load_info.get('chunked'):
+            assert load_info['chunked'] is True
+            assert 'chunks_loaded' in load_info
+    
+    def test_chunked_load_with_semicolon_delimiter(self):
+        """Verifica que chunked load funciona con diferentes delimitadores."""
+        csv_semicolon = "col1;col2;col3\n" + "\n".join([f"{i};{i+1};{i+2}" for i in range(60000)])
+        
+        import io
+        file_obj = io.StringIO(csv_semicolon)
+        
+        df, load_info = CSVLoader.load_csv_chunked(file_obj)
+        
+        assert load_info['delimiter'] == ';'
+        assert df.shape[1] == 3

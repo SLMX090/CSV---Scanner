@@ -106,3 +106,27 @@ def sample_dataframe():
         'edad': [30, 25, 35],
         'fecha': ['2024-01-15', '2024-02-20', '2024-03-10']
     })
+
+
+@pytest.fixture
+def sample_large_csv():
+    """Retorna un CSV grande (simula) para pruebas de chunked loading.
+    
+    Genera 100,000 filas de datos para simular archivo grande.
+    """
+    data = []
+    header = "id,nombre,correo,telefono,edad,ciudad,fecha_registro\n"
+    
+    for i in range(100000):
+        row = (f"{i},Juan{i},juan{i}@example.com,+34612345678,{30 + (i % 50)},"
+               f"Madrid,2024-01-{(i % 28) + 1:02d}\n")
+        data.append(row)
+    
+    return header + "".join(data)
+
+
+@pytest.fixture
+def sample_csv_file_object_large(sample_large_csv):
+    """Retorna un StringIO con el CSV grande."""
+    import io
+    return io.StringIO(sample_large_csv)

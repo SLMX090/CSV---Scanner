@@ -153,7 +153,11 @@ with tab1:
         st.divider()
         
         # Intenta cargar el archivo
-        with st.spinner("Cargando archivo..."):
+        spinner_msg = "Cargando archivo..."
+        if uploaded_file.size > 100 * 1024 * 1024:  # > 100MB
+            spinner_msg = "⏳ Cargando archivo grande por chunks..."
+        
+        with st.spinner(spinner_msg):
             try:
                 df, load_info = CSVLoader.load_csv(
                     uploaded_file,
@@ -167,18 +171,36 @@ with tab1:
                 
                 # Muestra información de carga
                 st.markdown('<div class="success-box">', unsafe_allow_html=True)
-                st.success("✅ Archivo cargado correctamente")
+                if load_info.get('chunked'):
+                    st.success("✅ Archivo grande cargado por chunks")
+                else:
+                    st.success("✅ Archivo cargado correctamente")
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Filas", load_info['rows'])
-                with col2:
+                # Muestra información de carga con adaptaciones para chunked
+                cols = st.columns(4)
+                with cols[0]:
+                    st.metric("Filas", f"{load_info['rows']:,}")
+                with cols[1]:
                     st.metric("Columnas", load_info['columns'])
-                with col3:
+                with cols[2]:
                     st.metric("Delimitador", f"'{load_info['delimiter']}'")
-                with col4:
-                    st.metric("Modo Carga", load_info.get('load_mode', 'permissive'))
+                with cols[3]:
+                    if load_info.get('chunked'):
+                        st.metric("Modo", f"Chunks ({load_info.get('chunks_loaded', 0)})")
+                    else:
+                        st.metric("Modo", load_info.get('load_mode', 'permissive'))
+                
+                # Advertencia si es carga chunked (es una muestra)
+                if load_info.get('chunked'):
+                    st.markdown('<div class="info-box">', unsafe_allow_html=True)
+                    st.info(
+                        f"ℹ️ **Carga por Chunks**: Archivo grande ({uploaded_file.size / (1024*1024):.1f} MB) "
+                        f"cargado en {load_info.get('chunks_loaded', 1)} chunk(s). "
+                        "El análisis se realiza sobre el archivo completo. "
+                        "Algunos cálculos de estadísticas pueden ser aproximados."
+                    )
+                    st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Muestra advertencia si hay líneas problemáticas
                 if load_info.get('bad_lines_count', 0) > 0:

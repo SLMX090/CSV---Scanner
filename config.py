@@ -4,9 +4,15 @@ Define constantes, límites y configuraciones para la plataforma de análisis CS
 """
 
 # Configuración de carga de archivos
-MAX_FILE_SIZE_MB = 50  # Tamaño máximo del archivo en MB
+MAX_FILE_SIZE_MB = 1024  # Tamaño máximo del archivo en MB (1GB)
 SUPPORTED_ENCODINGS = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252', 'utf-16']
 COMMON_DELIMITERS = [',', ';', '\t', '|', ':']
+
+# Configuración de carga por chunks (para archivos grandes)
+CHUNKED_LOAD_THRESHOLD_MB = 100  # Archivos > 100MB se cargan por chunks
+CHUNK_SIZE_ROWS = 50000  # Número de filas por chunk
+MAX_CHUNKS_TO_ANALYZE = 10  # Máximo número de chunks a analizar para perfilado
+ENABLE_CHUNKED_LOADING = True  # Activar carga por chunks automáticamente
 
 # Modo de carga de CSV: 'strict' (detiene si hay errores) o 'permissive' (omite líneas malas con aviso)
 CSV_LOAD_MODE = 'permissive'  # Cambiar a 'strict' para modo estricto

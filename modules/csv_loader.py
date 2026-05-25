@@ -1,12 +1,17 @@
 """
 Módulo de carga de archivos CSV.
 Maneja la lectura de archivos CSV con validación de errores comunes.
+Soporta carga de archivos grandes mediante chunks automático.
 """
 
 import pandas as pd
 import io
 import csv
-from config import MAX_FILE_SIZE_MB, SUPPORTED_ENCODINGS, COMMON_DELIMITERS, CSV_LOAD_MODE
+from config import (
+    MAX_FILE_SIZE_MB, SUPPORTED_ENCODINGS, COMMON_DELIMITERS, CSV_LOAD_MODE,
+    CHUNKED_LOAD_THRESHOLD_MB, CHUNK_SIZE_ROWS, MAX_CHUNKS_TO_ANALYZE,
+    ENABLE_CHUNKED_LOADING
+)
 
 
 class CSVLoadError(Exception):
@@ -134,6 +139,96 @@ class CSVLoader:
         return 'utf-8'  # Por defecto
     
     @staticmethod
+    def load_csv_chunked(file_object, delimiter=None, encoding=None, progress_callback=None):
+        """
+        Carga un archivo CSV grande mediante chunks para optimizar memoria.
+        
+        Args:
+            file_object: Objeto de archivo (desde Streamlit)
+            delimiter (str): Delimitador (si None, detecta automáticamente)
+            encoding (str): Codificación (si None, detecta automáticamente)
+            progress_callback (callable): Función para reportar progreso (chunk_index, total_chunks)
+        
+        Returns:
+            tuple: (pd.DataFrame, dict con información de carga)
+            Mismo formato que load_csv()
+        
+        Raises:
+            CSVLoadError: Si hay errores críticos en la carga
+        """
+        try:
+            # Valida tamaño y detecta encoding/delimiter
+            file_bytes = file_object.read()
+            CSVLoader.validate_file(len(file_bytes))
+            file_object.seek(0)
+            
+            if encoding is None:
+                encoding = CSVLoader.detect_encoding(file_bytes)
+            
+            if delimiter is None:
+                sample = file_bytes.decode(encoding).split('\n')[:5]
+                sample_text = '\n'.join(sample)
+                delimiter = CSVLoader.detect_delimiter(sample_text, encoding)
+            
+            # Recarga por chunks
+            file_object.seek(0)
+            chunks = []
+            chunk_index = 0
+            
+            try:
+                while True:
+                    chunk = pd.read_csv(
+                        file_object,
+                        delimiter=delimiter,
+                        encoding=encoding,
+                        nrows=CHUNK_SIZE_ROWS,
+                        on_bad_lines='skip'
+                    )
+                    
+                    if chunk.empty:
+                        break
+                    
+                    chunks.append(chunk)
+                    chunk_index += 1
+                    
+                    if progress_callback:
+                        progress_callback(chunk_index, None)
+                    
+                    # Si alcanzamos el límite de chunks a cargar, para
+                    if chunk_index >= 1000:  # Límite hard de seguridad
+                        break
+                
+            except pd.errors.ParserError:
+                # Si hay error al leer, continúa con lo que se haya leído
+                pass
+            
+            if not chunks:
+                raise CSVLoadError('El archivo CSV está vacío después de procesar')
+            
+            # Combina chunks
+            df = pd.concat(chunks, ignore_index=True)
+            
+            # Limpia nombres de columnas
+            df.columns = CSVLoader.clean_column_names(df.columns)
+            
+            return df, {
+                'delimiter': delimiter,
+                'encoding': encoding,
+                'rows': df.shape[0],
+                'columns': df.shape[1],
+                'bad_lines_count': 0,  # No se puede contar con precisión en chunks
+                'bad_lines_sample': [],
+                'load_mode': CSV_LOAD_MODE,
+                'chunked': True,
+                'chunks_loaded': chunk_index
+            }
+        
+        except CSVLoadError:
+            raise
+        except Exception as e:
+            raise CSVLoadError(f'Error al cargar archivo por chunks: {str(e)}')
+    
+    @staticmethod
     def load_csv(file_object, delimiter=None, encoding=None):
         """
         Carga un archivo CSV con manejo de errores y captura de líneas problemáticas.
@@ -161,6 +256,21 @@ class CSVLoader:
             file_bytes = file_object.read()
             CSVLoader.validate_file(len(file_bytes))
             file_object.seek(0)
+            
+            # Decide si usar carga por chunks automáticamente
+            file_size_mb = len(file_bytes) / (1024 ** 2)
+            use_chunked = (
+                ENABLE_CHUNKED_LOADING and 
+                file_size_mb > CHUNKED_LOAD_THRESHOLD_MB
+            )
+            
+            if use_chunked:
+                # Usa carga por chunks para archivos grandes
+                return CSVLoader.load_csv_chunked(
+                    file_object,
+                    delimiter=delimiter,
+                    encoding=encoding
+                )
             
             # Detecta codificación
             if encoding is None:
