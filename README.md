@@ -1,32 +1,85 @@
 # 📊 Analizador de Calidad de Datos CSV
 
-Plataforma local para analizar archivos CSV, detectar problemas de calidad de datos y generar recomendaciones de limpieza y validación antes de cargar información a una base de datos.
+Herramienta local para analizar archivos CSV e identificar posibles problemas de calidad de datos. Diseñada como apoyo preliminar y referencia dentro de procesos ETL, requiere validación posterior mediante controles formales y revisión humana.
 
 ## 🎯 Características
 
-### Detección de Problemas
+### Identificación de Posibles Problemas
 - ✅ Registros nulos y campos vacíos
-- ✅ Filas duplicadas completas y parciales
+- ✅ Filas potencialmente duplicadas (completas y parciales)
 - ✅ Tipos de datos inferidos por columna
-- ✅ Columnas con mezcla de tipos de datos
-- ✅ Valores fuera de rango numérico
-- ✅ Fechas inválidas o con formatos inconsistentes
-- ✅ Correos electrónicos inválidos
-- ✅ Teléfonos inválidos
-- ✅ Texto con caracteres especiales extraños
-- ✅ Columnas con demasiados valores únicos
+- ✅ Columnas con posible mezcla de tipos de datos
+- ✅ Valores fuera de rango numérico esperado
+- ✅ Fechas con formatos inconsistentes o inválidos
+- ✅ Formato de correos electrónicos potencialmente inválidos
+- ✅ Formato de teléfonos potencialmente inválidos
+- ✅ Texto con caracteres especiales anómalos
+- ✅ Columnas con cardinalidad inusual
 - ✅ Columnas con exceso de valores faltantes
 
-### Generación de Reportes
+### Generación de Reportes Preliminares
 - 📊 Información general del dataset
-- 📈 Análisis estadístico detallado
+- 📈 Análisis estadístico descriptivo
 - ❌ Análisis de valores nulos
 - 🔄 Detección de duplicados
-- ✅ Validaciones (email, teléfono, fecha, etc.)
-- 💡 Recomendaciones de limpieza
+- ✅ Validaciones preliminares (email, teléfono, fecha, etc.)
+- 💡 Recomendaciones iniciales de limpieza
 - 🗄️ Reglas sugeridas para base de datos (NOT NULL, UNIQUE, CHECK, etc.)
-- 🔧 Recomendaciones de normalización
+- 🔧 Sugerencias de normalización
 - 📥 Exportación en Excel y HTML
+
+---
+
+## ⚠️ Alcance y Limitaciones
+
+### 🎯 ¿Qué es esta herramienta?
+
+Este proyecto es una **aplicación local de análisis preliminar** diseñada como herramienta de **consulta y referencia** dentro de procesos ETL/Big Data. Su propósito es ayudarte a:
+
+- 🔍 **Identificar posibles problemas** de calidad en archivos CSV antes de ingestión
+- 📊 **Servir como segunda opinión** en análisis de datos exploratorio
+- 💡 **Generar recomendaciones iniciales** que requieren validación posterior
+
+### ❌ Lo que **NO es** esta herramienta
+
+- ❌ **NO** es un sistema de validación formal o certificado
+- ❌ **NO** debe usarse como fuente única de verdad para decisiones críticas  
+- ❌ **NO** reemplaza controles ETL formales ni validaciones en base de datos
+- ❌ **NO** garantiza detección exhaustiva de todos los problemas
+- ❌ **NO** es adecuada para tomar decisiones automáticas sobre datos de producción
+
+### 🧪 Naturaleza de las validaciones
+
+Las validaciones empleadas son **heurísticas y básicas**:
+- Pueden generar **falsos positivos** (alertar problemas que no existen)
+- Pueden generar **falsos negativos** (perder problemas reales)
+- Usan patrones simples y reglas predeterminadas, no análisis estadístico avanzado
+
+### ✅ Uso recomendado
+
+1. **Análisis Exploratorio**: Entender la estructura y calidad general de un CSV
+2. **Validación Preliminar**: Identificar problemas obvios antes de procesos más rigurosos
+3. **Documentación de Descubrimientos**: Usar como base para investigaciones posteriores
+4. **Apoyo a Procesos ETL**: Complementar (no reemplazar) reglas ETL formales
+
+### 🔒 Decisiones que requieren validación adicional
+
+Antes de proceder con cualquiera de estas acciones, **valida con herramientas especializadas o revisión humana**:
+
+- Rechazo o eliminación de datos
+- Transformaciones automáticas en masa
+- Carga a sistemas de producción
+- Cambios en reglas de negocio basados en los hallazgos
+
+### 📌 Responsabilidad
+
+La responsabilidad de validar datos y tomar decisiones críticas **recae en el usuario**, no en esta herramienta. Los resultados son indicativos y deben ser contrastados con:
+- Reglas ETL formales del proceso
+- Validaciones en base de datos (constraints, triggers)
+- Revisión manual o auditoría humana
+- Herramientas especializadas en calidad de datos
+
+---
 
 ## 📋 Requisitos Previos
 

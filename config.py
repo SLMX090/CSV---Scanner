@@ -57,4 +57,4 @@ ALLOWED_DATE_FORMATS = [
     '%B %d, %Y',          # US: January 15, 2024
 ]
 DEFAULT_DAYFIRST = True  # Interpreta 01/02/03 como día/mes/año (no mes/día/año)
-DATE_FORMAT_CONSISTENCY_THRESHOLD = 0.95  # % de fechas que deben coincidir con el mismo formato
+DATE_FORMAT_CONSISTENCY_THRESHOLD = 0.95  # Proporción (0.0-1.0) de fechas que deben coincidir con el mismo formato

@@ -2,8 +2,8 @@
 Aplicación Principal de Análisis de Calidad de Datos CSV
 =========================================================
 
-Plataforma local para analizar archivos CSV antes de cargarlos a una base de datos.
-Detecta problemas de calidad de datos y genera recomendaciones de limpieza.
+Herramienta local para analizar archivos CSV e identificar posibles problemas de calidad 
+de datos que requieren validación posterior mediante controles ETL formales.
 
 Autor: Sistema de Análisis de Datos
 Versión: 1.0.0
@@ -72,9 +72,17 @@ st.markdown("""
 # Título principal
 st.markdown("# 📊 Analizador de Calidad de Datos CSV", unsafe_allow_html=True)
 st.markdown("""
-Plataforma para analizar archivos CSV, detectar problemas de calidad de datos 
-y generar recomendaciones de limpieza y validación para bases de datos.
+Herramienta local para analizar archivos CSV e identificar posibles problemas de calidad de datos 
+que requieren validación posterior.
 """)
+
+# Aviso sobre carácter preliminar de la herramienta
+st.info(
+    "ℹ️ **Importante**: Este análisis es **orientativo y preliminar**. "
+    "Los resultados no reemplazan validaciones formales de ETL ni controles de base de datos. "
+    "Revisa con herramientas especializadas antes de tomar decisiones críticas.",
+    icon="⚠️"
+)
 
 st.divider()
 
@@ -176,19 +184,44 @@ with tab1:
                 if load_info.get('bad_lines_count', 0) > 0:
                     st.markdown('<div class="warning-box">', unsafe_allow_html=True)
                     st.warning(
-                        f"⚠️ Se omitieron {load_info['bad_lines_count']} línea(s) mal formada(s). "
-                        "Estas líneas no coincidían con el número de columnas esperado."
+                        f"⚠️ **Pérdida de Datos Detectada**: Se omitieron {load_info['bad_lines_count']} línea(s) "
+                        f"({load_info['bad_lines_count'] / (load_info['rows'] + load_info['bad_lines_count']) * 100:.1f}% del total). "
+                        "Estas líneas no coincidían con el número esperado de columnas.\n\n"
+                        "**Recomendación**: Revisa los detalles de las líneas problemáticas y considera "
+                        "investigar la causa raíz en el archivo original."
                     )
                     
-                    # Muestra ejemplos de líneas problemáticas
+                    # Muestra ejemplos y opción de descarga
                     if load_info.get('bad_lines_sample'):
-                        with st.expander("📋 Ver detalles de líneas problemáticas"):
-                            for bad_line in load_info['bad_lines_sample']:
-                                st.write(
-                                    f"**Línea {bad_line['line_number']}**: "
-                                    f"esperaba {bad_line['expected_columns']} columnas, "
-                                    f"encontró {bad_line['actual_columns']}"
+                        col1, col2 = st.columns([3, 1])
+                        
+                        with col1:
+                            with st.expander(f"📋 Ver detalles ({len(load_info['bad_lines_sample'])} de {load_info['bad_lines_count']} problemas):"):
+                                st.markdown("**Líneas problemáticas detectadas:**")
+                                for bad_line in load_info['bad_lines_sample']:
+                                    st.code(
+                                        f"Línea {bad_line['line_number']}: "
+                                        f"{bad_line['actual_columns']} col. (esperaba {bad_line['expected_columns']})\n"
+                                        f"Contenido: {bad_line['content']}...",
+                                        language='text'
+                                    )
+                        
+                        with col2:
+                            # Crea CSV descargable con los detalles de líneas problemáticas
+                            try:
+                                import pandas as pd
+                                bad_lines_df = pd.DataFrame(load_info['bad_lines_sample'])
+                                csv_bytes = bad_lines_df.to_csv(index=False).encode()
+                                st.download_button(
+                                    label="⬇️ Descargar\nDetalles",
+                                    data=csv_bytes,
+                                    file_name="lineas_problematicas.csv",
+                                    mime="text/csv",
+                                    help="Descarga un CSV con los detalles de las líneas omitidas"
                                 )
+                            except Exception:
+                                pass  # Si falla la descarga, continúa sin error
+                    
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Muestra vista previa
@@ -458,7 +491,13 @@ with tab4:
     if 'df' not in st.session_state:
         st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
     else:
-        st.header("Recomendaciones de Limpieza y Validación")
+        st.header("Recomendaciones Preliminares")
+        
+        st.info(
+            "💡 Estas recomendaciones son **sugerencias preliminares** basadas en análisis heurístico. "
+            "**Requieren validación posterior** con reglas ETL formales y consideraciones del negocio.",
+            icon="ℹ️"
+        )
         
         if 'profile' not in st.session_state or 'validation_results' not in st.session_state:
             st.warning("⚠️ Ejecuta primero el análisis en las pestañas anteriores")

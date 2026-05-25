@@ -313,14 +313,14 @@ class DataValidator:
                             'value': value_str[:50]
                         })
             
-            # Calcula consistencia de formato
+            # Calcula consistencia de formato como proporción (0.0-1.0)
             if format_patterns:
                 most_common_format = max(format_patterns, key=format_patterns.get)
                 most_common_count = format_patterns[most_common_format]
                 total_valid = len(valid_dates)
-                format_consistency = (most_common_count / total_valid * 100) if total_valid > 0 else 0
+                format_consistency = (most_common_count / total_valid) if total_valid > 0 else 0.0
             else:
-                format_consistency = 0
+                format_consistency = 0.0
                 most_common_format = None
             
             date_results[col] = {
@@ -331,7 +331,7 @@ class DataValidator:
                     if (len(valid_dates) + invalid_count) > 0 else 0
                 ),
                 'detected_formats': format_patterns,
-                'format_consistency_percent': format_consistency,
+                'format_consistency': format_consistency,
                 'most_common_format': most_common_format,
                 'ambiguous_dates': ambiguous_dates,
                 'examples_invalid': invalid_dates,
