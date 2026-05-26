@@ -505,3 +505,100 @@ class DataValidator:
                         summary['total_issues_found'] += 1
         
         return summary
+    
+    @staticmethod
+    def validate_against_domain_rules(df, domain_name, domain_rules):
+        """
+        Valida DataFrame contra reglas de dominio predefinidas.
+        
+        Args:
+            df (pd.DataFrame): DataFrame a validar
+            domain_name (str): Nombre del dominio (healthcare, ecommerce, etc)
+            domain_rules (dict): Reglas del dominio cargadas del YAML
+        
+        Returns:
+            dict: {
+                'domain': domain_name,
+                'columns_checked': [...],
+                'validations': {
+                    'column_name': {
+                        'rule_name': 'age',
+                        'rule_type': 'numeric',
+                        'min': 0,
+                        'max': 120,
+                        'violations_count': N,
+                        'violation_percent': X.X,
+                        'violations_sample': [row_indices],
+                        'comment': '...'
+                    }
+                }
+            }
+        """
+        if not domain_rules:
+            return {'domain': domain_name, 'columns_checked': [], 'validations': {}}
+        
+        validations = {}
+        columns_checked = []
+        
+        for rule_name, rule_config in domain_rules.items():
+            # Busca columnas que coincidan con el nombre de la regla
+            matching_cols = [col for col in df.columns if rule_name.lower() in col.lower()]
+            
+            if not matching_cols:
+                continue
+            
+            rule_type = rule_config.get('type', 'numeric')
+            
+            for col in matching_cols:
+                columns_checked.append(col)
+                
+                if rule_type == 'numeric':
+                    min_val = rule_config.get('min')
+                    max_val = rule_config.get('max')
+                    
+                    # Convierte a numeric, invalid → NaN
+                    col_numeric = pd.to_numeric(df[col], errors='coerce')
+                    
+                    # Cuenta violaciones
+                    violations = []
+                    if min_val is not None:
+                        violations.extend(col_numeric[col_numeric < min_val].index.tolist())
+                    if max_val is not None:
+                        violations.extend(col_numeric[col_numeric > max_val].index.tolist())
+                    
+                    violations = list(set(violations))  # Remove duplicates
+                    violation_count = len(violations)
+                    violation_percent = (violation_count / len(df) * 100) if len(df) > 0 else 0
+                    
+                    validations[col] = {
+                        'rule_name': rule_name,
+                        'rule_type': rule_type,
+                        'min': min_val,
+                        'max': max_val,
+                        'violations_count': violation_count,
+                        'violation_percent': round(violation_percent, 2),
+                        'violations_sample': violations[:10],  # Max 10 ejemplos
+                        'comment': rule_config.get('comment', '')
+                    }
+                
+                elif rule_type == 'category':
+                    allowed = rule_config.get('allowed', [])
+                    violations = df[~df[col].isin(allowed)].index.tolist()
+                    violation_count = len(violations)
+                    violation_percent = (violation_count / len(df) * 100) if len(df) > 0 else 0
+                    
+                    validations[col] = {
+                        'rule_name': rule_name,
+                        'rule_type': rule_type,
+                        'allowed': allowed,
+                        'violations_count': violation_count,
+                        'violation_percent': round(violation_percent, 2),
+                        'violations_sample': violations[:10],
+                        'comment': rule_config.get('comment', '')
+                    }
+        
+        return {
+            'domain': domain_name,
+            'columns_checked': columns_checked,
+            'validations': validations
+        }

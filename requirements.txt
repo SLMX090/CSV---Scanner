@@ -4,6 +4,7 @@ openpyxl==3.11.0
 email-validator==2.1.0
 python-dateutil==2.8.2
 numpy==1.24.3
+PyYAML==6.0
 
 # Herramientas de testing
 pytest==7.4.3

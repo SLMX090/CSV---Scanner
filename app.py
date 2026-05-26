@@ -402,6 +402,80 @@ with tab3:
         
         df = st.session_state.df
         
+        # Validación por Dominio (NUEVA FEATURE)
+        with st.expander("🎯 Validación por Dominio (Opcional)", expanded=False):
+            st.markdown("""
+            Selecciona un dominio para validar tus datos contra reglas predefinidas.
+            **Esto es referencia, no validación formal. Requiere revisión posterior.**
+            """)
+            
+            domains = {
+                'healthcare': 'Sector Sanitario',
+                'ecommerce': 'E-Commerce y Retail',
+                'hr': 'Recursos Humanos',
+                'finance': 'Finanzas',
+                'government': 'Gobierno y Datos Públicos'
+            }
+            
+            domain_choice = st.selectbox(
+                "Selecciona un dominio:",
+                options=list(domains.keys()),
+                format_func=lambda x: f"{x.upper()} - {domains[x]}",
+                key='domain_selector'
+            )
+            
+            if domain_choice:
+                # Carga reglas del dominio
+                import yaml
+                try:
+                    with open('./config/domain_templates.yaml', 'r', encoding='utf-8') as f:
+                        all_domain_rules = yaml.safe_load(f)
+                    
+                    domain_rules = all_domain_rules.get(domain_choice, {})
+                    
+                    if domain_rules:
+                        # Aplica validación
+                        domain_validation = DataValidator.validate_against_domain_rules(
+                            df, domain_choice, domain_rules
+                        )
+                        
+                        if domain_validation['columns_checked']:
+                            st.markdown(f"✅ **Dominio**: {domain_choice.upper()}")
+                            st.markdown(f"**Columnas con reglas**: {', '.join(domain_validation['columns_checked'])}")
+                            
+                            # Muestra resultados
+                            for col, validation in domain_validation['validations'].items():
+                                col1, col2, col3 = st.columns(3)
+                                
+                                with col1:
+                                    st.metric(
+                                        f"{col}",
+                                        f"{validation['violations_count']} violaciones"
+                                    )
+                                
+                                with col2:
+                                    pct = validation['violation_percent']
+                                    color = "🔴" if pct > 5 else "🟡" if pct > 0 else "🟢"
+                                    st.metric(f"Porcentaje", f"{color} {pct}%")
+                                
+                                with col3:
+                                    rule_info = f"Regla: {validation['rule_name']}"
+                                    if validation['rule_type'] == 'numeric':
+                                        rule_info += f"\nRango: {validation['min']}-{validation['max']}"
+                                    st.metric("Tipo", validation['rule_type'])
+                                
+                                if validation['comment']:
+                                    st.caption(f"ℹ️ {validation['comment']}")
+                        else:
+                            st.warning(f"No se encontraron columnas coincidentes para dominio '{domain_choice}'")
+                    else:
+                        st.warning(f"No hay reglas definidas para dominio '{domain_choice}'")
+                
+                except FileNotFoundError:
+                    st.error("⚠️ Archivo de reglas no encontrado (config/domain_templates.yaml)")
+                except yaml.YAMLError as e:
+                    st.error(f"❌ Error al leer reglas YAML: {e}")
+        
         with st.spinner("Ejecutando validaciones..."):
             # Realiza validaciones
             validator = DataValidator(df)

@@ -122,6 +122,57 @@ Resultado: 2,500,000 filas analizadas correctamente
 
 ---
 
+## 🎯 **Validación por Dominio**
+
+### Reglas Predefinidas por Sector
+
+La herramienta incluye reglas de validación predefinidas para múltiples dominios. **Estas son referencias de buenas prácticas, no validaciones formales.**
+
+Dominios soportados:
+
+| Dominio | Reglas Incluidas | Ejemplo |
+|---------|------------------|---------|
+| **Healthcare** | age, heart_rate, temperature, blood_pressure, glucose, weight | Edad: 0-120 años |
+| **E-Commerce** | price, stock, discount_percent, product_code, sku | Stock >= 0, Descuento 0-100% |
+| **HR** | age, salary, employee_id, department | Edad: 18-75, Salario > 500 |
+| **Finance** | transaction_amount, interest_rate, account_balance, iban | Tasa: 0-100%, IBAN válido |
+| **Government** | age, population, zip_code, tax_id | ZIP: 5 dígitos, NIF válido |
+
+### Cómo Usar
+
+1. Carga tu archivo CSV
+2. Ve a pestaña **"Validaciones"**
+3. Expande **"🎯 Validación por Dominio (Opcional)"**
+4. Selecciona tu dominio
+5. Verás columnas coincidentes y sus violaciones de reglas
+
+### Ejemplo
+
+```
+Dominio: ECOMMERCE
+Columnas: [price, stock, discount_percent]
+
+price:
+  - Regla: min=0, max=null
+  - Violaciones: 3 (2.1%)
+  - Comentario: "Precio debe ser >= 0"
+
+stock:
+  - Regla: min=0, max=null
+  - Violaciones: 0 (0.0%)
+  - Comentario: "Stock no puede ser negativo"
+```
+
+### Personalizar Reglas
+
+Para agregar dominios o reglas propias:
+1. Edita `config/domain_templates.yaml`
+2. Sigue formato YAML existente
+3. Reinicia la aplicación
+4. Las nuevas reglas estarán disponibles
+
+---
+
 ##  Instalación
 
 ### 1. Clonar o descargar el proyecto
@@ -273,6 +324,12 @@ La aplicación se abrirá en tu navegador (generalmente en `http://localhost:850
      - Valores numéricos fuera de rango
      - Texto con caracteres especiales
      - URLs válidas/inválidas
+   - **Validación por Dominio** (NUEVA): Reglas predefinidas para:
+     - Healthcare (edad, presión arterial, glucosa, etc.)
+     - E-Commerce (precio, stock, descuento)
+     - HR (edad laboral, salario, departamento)
+     - Finance (montos, tasas, IBAN)
+     - Gobierno (población, códigos, IDs)
 
 #### 4. **Recomendaciones** 💡
    - Obtén sugerencias de limpieza

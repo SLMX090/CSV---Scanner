@@ -318,4 +318,111 @@ class TestValidateAll:
         assert 'date_validation' in results
         assert 'numeric_validation' in results
         assert 'text_validation' in results
+
+
+class TestDomainRules:
+    """Pruebas para validación contra reglas de dominio."""
+    
+    def test_domain_rules_numeric_validation(self):
+        """Verifica validación numérica contra reglas de dominio."""
+        df = pd.DataFrame({
+            'age': [25, 150, 30, 5, 45, 60],  # 150 y 5 fuera de rango 0-120
+            'salary': [30000, 50000, 45000, 35000, 40000]
+        })
+        
+        rules = {
+            'age': {
+                'type': 'numeric',
+                'min': 0,
+                'max': 120,
+                'comment': 'Edad válida'
+            }
+        }
+        
+        result = DataValidator.validate_against_domain_rules(
+            df, 'test_domain', rules
+        )
+        
+        assert result['domain'] == 'test_domain'
+        assert 'age' in result['validations']
+        assert result['validations']['age']['violations_count'] == 2  # 150 y 5
+    
+    def test_domain_rules_category_validation(self):
+        """Verifica validación de categoría contra reglas de dominio."""
+        df = pd.DataFrame({
+            'department': ['IT', 'HR', 'Sales', 'Unknown', 'IT', 'Finance']
+        })
+        
+        rules = {
+            'department': {
+                'type': 'category',
+                'allowed': ['IT', 'HR', 'Sales', 'Operations'],
+                'comment': 'Departamento válido'
+            }
+        }
+        
+        result = DataValidator.validate_against_domain_rules(
+            df, 'hr', rules
+        )
+        
+        assert 'department' in result['validations']
+        # Unknown y Finance están fuera
+        assert result['validations']['department']['violations_count'] == 2
+    
+    def test_domain_rules_partial_match_columns(self):
+        """Verifica que detecta columnas por match parcial."""
+        df = pd.DataFrame({
+            'patient_age': [25, 150, 30],
+            'birth_date': ['1990-01-15', '2000-01-01', '1985-05-20']
+        })
+        
+        rules = {
+            'age': {
+                'type': 'numeric',
+                'min': 0,
+                'max': 120
+            }
+        }
+        
+        result = DataValidator.validate_against_domain_rules(
+            df, 'healthcare', rules
+        )
+        
+        # Debe detectar 'patient_age' porque contiene 'age'
+        assert 'patient_age' in result['validations'] or len(result['columns_checked']) > 0
+    
+    def test_domain_rules_empty_rules(self):
+        """Verifica comportamiento con reglas vacías."""
+        df = pd.DataFrame({
+            'col1': [1, 2, 3],
+            'col2': ['a', 'b', 'c']
+        })
+        
+        result = DataValidator.validate_against_domain_rules(
+            df, 'test', {}
+        )
+        
+        assert result['domain'] == 'test'
+        assert result['validations'] == {}
+    
+    def test_domain_rules_violation_percent_calculation(self):
+        """Verifica cálculo correcto de porcentaje de violaciones."""
+        df = pd.DataFrame({
+            'price': [100, 200, -50, 150, -25, 300, 400, 500, 600, 700]
+        })
+        
+        rules = {
+            'price': {
+                'type': 'numeric',
+                'min': 0,
+                'max': None
+            }
+        }
+        
+        result = DataValidator.validate_against_domain_rules(
+            df, 'ecommerce', rules
+        )
+        
+        # 2 violaciones de 10 = 20%
+        assert result['validations']['price']['violation_percent'] == 20.0
         assert 'url_validation' in results

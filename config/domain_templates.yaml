@@ -1,0 +1,131 @@
+# Domain Templates - Validaciones por Dominio
+# NOTA: Estas son RECOMENDACIONES, no validaciones formales.
+# El usuario debe verificar manualmente antes de aplicar.
+
+healthcare:
+  description: "Sector Sanitario"
+  rules:
+    age:
+      type: numeric
+      min: 0
+      max: 120
+      comment: "Edad válida típica 0-120 años"
+    heart_rate:
+      type: numeric
+      min: 40
+      max: 200
+      comment: "Frecuencia cardíaca en latidos/minuto"
+    temperature:
+      type: numeric
+      min: 35
+      max: 42
+      comment: "Temperatura corporal en Celsius"
+    blood_pressure_systolic:
+      type: numeric
+      min: 70
+      max: 200
+      comment: "Presión sistólica (mmHg)"
+    weight_kg:
+      type: numeric
+      min: 1
+      max: 500
+      comment: "Peso en kilogramos"
+    glucose:
+      type: numeric
+      min: 50
+      max: 600
+      comment: "Glucosa en mg/dL"
+
+ecommerce:
+  description: "E-Commerce y Retail"
+  rules:
+    price:
+      type: numeric
+      min: 0
+      max: null
+      comment: "Precio debe ser >= 0"
+    stock:
+      type: numeric
+      min: 0
+      max: null
+      comment: "Stock no puede ser negativo"
+    discount_percent:
+      type: numeric
+      min: 0
+      max: 100
+      comment: "Descuento entre 0-100%"
+    product_code:
+      type: text
+      pattern: "^[A-Z0-9]{3,20}$"
+      comment: "Código alfanumérico de 3-20 caracteres"
+    sku:
+      type: text
+      pattern: "^[A-Z0-9-]{5,50}$"
+      comment: "SKU válido"
+
+hr:
+  description: "Recursos Humanos"
+  rules:
+    age:
+      type: numeric
+      min: 18
+      max: 75
+      comment: "Edad típica laboral"
+    salary:
+      type: numeric
+      min: 500
+      max: 10000000
+      comment: "Salario en unidad de moneda local"
+    employee_id:
+      type: text
+      pattern: "^[A-Z]{2}[0-9]{6}$"
+      comment: "ID empleado: 2 letras + 6 números"
+    department:
+      type: category
+      allowed: ["IT", "HR", "Finance", "Sales", "Operations", "Marketing"]
+      comment: "Departamentos válidos"
+
+finance:
+  description: "Finanzas"
+  rules:
+    transaction_amount:
+      type: numeric
+      min: 0
+      max: null
+      comment: "Monto transacción > 0"
+    interest_rate:
+      type: numeric
+      min: 0
+      max: 100
+      comment: "Tasa interés en porcentaje (0-100%)"
+    account_balance:
+      type: numeric
+      min: null
+      max: null
+      comment: "Saldo puede ser positivo o negativo"
+    iban:
+      type: text
+      pattern: "^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$"
+      comment: "IBAN válido"
+
+government:
+  description: "Gobierno y Datos Públicos"
+  rules:
+    age:
+      type: numeric
+      min: 0
+      max: 120
+      comment: "Edad válida"
+    population:
+      type: numeric
+      min: 1
+      max: null
+      comment: "Población debe ser >= 1"
+    zip_code:
+      type: text
+      pattern: "^[0-9]{5}$"
+      comment: "Código postal español (5 dígitos)"
+    tax_id:
+      type: text
+      pattern: "^[0-9]{8}[A-Z]$"
+      comment: "NIF español válido"
