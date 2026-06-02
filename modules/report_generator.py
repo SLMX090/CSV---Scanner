@@ -96,6 +96,8 @@ class ReportGenerator:
                 'Total de Columnas',
                 'Total de Celdas',
                 'Uso de Memoria',
+                'Filas Completas (sin nulos)',
+                '% Filas Completas',
                 'Valores Nulos Totales',
                 '% Nulos Global',
                 'Filas Duplicadas',
@@ -111,6 +113,8 @@ class ReportGenerator:
                 str(self.profile['general_info']['total_columns']),
                 str(self.profile['general_info']['total_cells']),
                 f"{self.profile['memory_usage']:.2f} MB",
+                str(self.profile['null_analysis']['complete_rows']),
+                f"{self.profile['null_analysis']['complete_rows_percent']:.2f}%",
                 str(self.profile['null_analysis']['total_null_cells']),
                 f"{self.profile['null_analysis']['null_percent_overall']:.2f}%",
                 str(self.profile['duplicates']['total_duplicates']),
@@ -152,6 +156,7 @@ class ReportGenerator:
                 'Columna': col,
                 'Nulos': info['count'],
                 '% Nulos': f"{info['percent']:.2f}%",
+                '% Utilidad': f"{info['utilization_percent']:.2f}%",
                 'Estado': 'CRÍTICO' if info['percent'] >= 80 else 'GRAVE' if info['percent'] >= 40 else 'OK'
             })
         
@@ -161,11 +166,52 @@ class ReportGenerator:
                 'Columna': 'N/A',
                 'Nulos': 0,
                 '% Nulos': '0.00%',
+                '% Utilidad': '100.00%',
                 'Estado': 'Sin incidencias detectadas'
             })
         
         df_nulls = pd.DataFrame(null_data)
         df_nulls.to_excel(writer, sheet_name='ANALISIS_NULOS', index=False)
+        
+        # Agregar hoja adicional con resumen de filas completas y utilidad por columna
+        self._write_rows_and_utilization_sheet(writer)
+    
+    def _write_rows_and_utilization_sheet(self, writer):
+        """Escribe análisis de filas completas y utilidad por columna."""
+        # Datos de resumen de filas completas
+        complete_rows_data = {
+            'Métrica': [
+                'Total de Filas',
+                'Filas Completas (sin nulos)',
+                '% Filas Completas',
+                'Filas con al menos 1 nulo'
+            ],
+            'Valor': [
+                str(self.profile['null_analysis'].get('complete_rows', 0) + 
+                    (self.profile['general_info']['total_rows'] - 
+                     self.profile['null_analysis'].get('complete_rows', 0))),
+                str(self.profile['null_analysis'].get('complete_rows', 0)),
+                f"{self.profile['null_analysis'].get('complete_rows_percent', 0):.2f}%",
+                str(self.profile['general_info']['total_rows'] - 
+                    self.profile['null_analysis'].get('complete_rows', 0))
+            ]
+        }
+        
+        df_complete = pd.DataFrame(complete_rows_data)
+        df_complete.to_excel(writer, sheet_name='FILAS_Y_UTILIDAD', index=False, startrow=0)
+        
+        # Datos de utilidad por columna
+        utilization_data = []
+        for col, utilization_pct in self.profile['null_analysis'].get('column_utilization', {}).items():
+            utilization_data.append({
+                'Columna': col,
+                '% Utilidad': f"{utilization_pct:.2f}%",
+                'Estatus': 'CRÍTICO' if utilization_pct < 50 else 'BAJO' if utilization_pct < 80 else 'ACEPTABLE'
+            })
+        
+        if utilization_data:
+            df_utilization = pd.DataFrame(utilization_data)
+            df_utilization.to_excel(writer, sheet_name='FILAS_Y_UTILIDAD', index=False, startrow=6)
     
     def _write_duplicates_sheet(self, writer):
         """Escribe análisis de duplicados."""

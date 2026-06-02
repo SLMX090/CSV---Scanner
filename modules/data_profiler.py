@@ -56,6 +56,12 @@ class DataProfiler:
         """Analiza valores nulos en el DataFrame."""
         null_info = DataFrameHelper.get_null_info(self.df)
         
+        # Obtiene información de filas completas
+        complete_rows_info = DataFrameHelper.get_complete_rows_info(self.df)
+        
+        # Obtiene utilidad por columna
+        column_utilization = DataFrameHelper.get_column_utilization(self.df)
+        
         # Identifica columnas problemáticas
         problematic_columns = {}
         for col, null_count in null_info['by_column'].items():
@@ -64,6 +70,7 @@ class DataProfiler:
                 problematic_columns[col] = {
                     'null_count': int(null_count),
                     'null_percent': float(null_percent),
+                    'utilization_percent': column_utilization.get(col, 0),
                     'status': 'CRÍTICO' if null_percent >= 80 else 'GRAVE'
                 }
         
@@ -73,14 +80,18 @@ class DataProfiler:
                 (null_info['total_null_cells'] / null_info['total_cells'] * 100)
                 if null_info['total_cells'] > 0 else 0
             ),
+            'complete_rows': complete_rows_info['complete_rows'],
+            'complete_rows_percent': complete_rows_info['complete_rows_percent'],
             'by_column': {
                 col: {
                     'count': int(count),
-                    'percent': float(null_info['by_column_percent'][col])
+                    'percent': float(null_info['by_column_percent'][col]),
+                    'utilization_percent': column_utilization.get(col, 0)
                 }
                 for col, count in null_info['by_column'].items()
                 if count > 0
             },
+            'column_utilization': column_utilization,
             'problematic_columns': problematic_columns
         }
     

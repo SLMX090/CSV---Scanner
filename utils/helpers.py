@@ -71,6 +71,51 @@ class DataFrameHelper:
         }
     
     @staticmethod
+    def get_complete_rows_info(df):
+        """
+        Obtiene información sobre filas completamente limpias (sin nulos).
+        
+        Args:
+            df (pd.DataFrame): DataFrame a analizar
+        
+        Returns:
+            dict: Información sobre filas completas
+        """
+        total_rows = len(df)
+        complete_rows = df.dropna().shape[0]
+        complete_rows_percent = (complete_rows / total_rows * 100) if total_rows > 0 else 0
+        
+        return {
+            'complete_rows': complete_rows,
+            'total_rows': total_rows,
+            'complete_rows_percent': round(complete_rows_percent, 2)
+        }
+    
+    @staticmethod
+    def get_column_utilization(df):
+        """
+        Calcula el porcentaje de utilidad para cada columna.
+        Utilidad = (Valores no nulos / Total de filas) × 100
+        
+        Args:
+            df (pd.DataFrame): DataFrame a analizar
+        
+        Returns:
+            dict: {column_name: utilization_percent}
+        """
+        total_rows = len(df)
+        if total_rows == 0:
+            return {}
+        
+        utilization = {}
+        for col in df.columns:
+            non_null_count = df[col].notna().sum()
+            utilization_percent = (non_null_count / total_rows * 100)
+            utilization[col] = round(utilization_percent, 2)
+        
+        return utilization
+    
+    @staticmethod
     def get_empty_string_info(df):
         """
         Identifica columnas con cadenas vacías o solo espacios.
