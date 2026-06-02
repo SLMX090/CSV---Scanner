@@ -11,6 +11,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from utils.helpers import ReportHelper, StringHelper
 from modules.severity_analyzer import SeverityAnalyzer
+from modules.sql_filter_suggestions import SQLFilterSuggestions
 
 
 class ReportGenerator:
@@ -30,6 +31,11 @@ class ReportGenerator:
         self.profile = profile
         self.validation_results = validation_results
         self.recommendations = recommendations
+        
+        # Genera sugerencias de filtros SQL
+        sql_suggester = SQLFilterSuggestions(profile, validation_results, df)
+        self.sql_suggestions = sql_suggester.generate_all_suggestions()
+        
         ReportHelper.create_output_directory()
     
     def generate_excel_report(self, filename=None):
@@ -75,7 +81,10 @@ class ReportGenerator:
             # Hoja 9: Normalización
             self._write_normalization_sheet(writer)
             
-            # Hoja 10: Muestras de Datos Problemáticos
+            # Hoja 10: Sugerencias de Filtros SQL
+            self._write_sql_filters_sheet(writer)
+            
+            # Hoja 11: Muestras de Datos Problemáticos
             self._write_problem_samples_sheet(writer)
         
         return filepath
@@ -378,6 +387,41 @@ class ReportGenerator:
             examples_df = pd.DataFrame(self.profile['duplicates']['examples'])
             examples_df.to_excel(writer, sheet_name='MUESTRAS_PROBLEMATICAS', index=False)
     
+    def _write_sql_filters_sheet(self, writer):
+        """Escribe sugerencias de filtros SQL para limpiar datos."""
+        all_filters = []
+        
+        # Recolecta todos los filtros de todas las categorías
+        for category, filters_list in self.sql_suggestions.items():
+            for filter_item in filters_list:
+                # Extrae el filtro SQL principal
+                filter_sql = filter_item.get('filter_sql', filter_item.get('filter_sql_simple', 'N/A'))
+                
+                all_filters.append({
+                    'Categoría': category.replace('_', ' ').upper(),
+                    'Severidad': filter_item.get('severity', 'AVISO'),
+                    'Columna': filter_item.get('column', 'GENERAL'),
+                    'Problema': StringHelper.truncate_string(filter_item.get('problem', ''), 80),
+                    'Filtro SQL': StringHelper.truncate_string(str(filter_sql), 100),
+                    'Descripción': StringHelper.truncate_string(filter_item.get('description', ''), 80),
+                    'Impacto': StringHelper.truncate_string(filter_item.get('impact', ''), 80)
+                })
+        
+        # Si no hay filtros, añade una fila indicando que no hay
+        if not all_filters:
+            all_filters.append({
+                'Categoría': 'N/A',
+                'Severidad': 'N/A',
+                'Columna': 'N/A',
+                'Problema': 'Sin incidencias detectadas',
+                'Filtro SQL': 'N/A',
+                'Descripción': 'Los datos tienen buena calidad',
+                'Impacto': 'N/A'
+            })
+        
+        df_filters = pd.DataFrame(all_filters)
+        df_filters.to_excel(writer, sheet_name='FILTROS_SQL', index=False)
+    
     def generate_html_report(self, filename=None):
         """
         Genera un reporte en HTML.
@@ -486,6 +530,7 @@ class ReportGenerator:
             {self._build_column_profile_section()}
             {self._build_validation_section()}
             {self._build_recommendations_section()}
+            {self._build_sql_filters_section()}
             
         </body>
         </html>
@@ -682,5 +727,55 @@ class ReportGenerator:
                 </tr>
                 {rows}
             </table>
+        </div>
+        """
+    
+    def _build_sql_filters_section(self):
+        """Construye sección de sugerencias de filtros SQL."""
+        # Recolecta los filtros más importantes
+        important_filters = []
+        
+        for category, filters_list in self.sql_suggestions.items():
+            for filter_item in filters_list[:2]:  # Máximo 2 por categoría
+                filter_sql = filter_item.get('filter_sql', filter_item.get('filter_sql_simple', 'N/A'))
+                
+                important_filters.append({
+                    'type': category,
+                    'severity': filter_item.get('severity', 'AVISO'),
+                    'column': filter_item.get('column', 'GENERAL'),
+                    'problem': filter_item.get('problem', ''),
+                    'filter_sql': str(filter_sql),
+                    'description': filter_item.get('description', '')
+                })
+        
+        if not important_filters:
+            return '<div class="section"><h2>🔍 Sugerencias de Filtros SQL</h2><p>No hay filtros SQL sugeridos. Los datos tienen buena calidad.</p></div>'
+        
+        rows = ''
+        for f in important_filters[:8]:  # Primeros 8
+            severity_class = 'critical' if f['severity'] == 'CRÍTICO' else 'serious' if f['severity'] == 'GRAVE' else 'warning'
+            rows += f"""
+            <tr>
+                <td class="{severity_class}">{f['severity']}</td>
+                <td>{f['column']}</td>
+                <td><code style="background: #f4f4f4; padding: 2px 5px; border-radius: 3px;">{StringHelper.truncate_string(f['filter_sql'], 60)}</code></td>
+                <td>{StringHelper.truncate_string(f['description'], 50)}</td>
+            </tr>
+            """
+        
+        return f"""
+        <div class="section">
+            <h2>🔍 Sugerencias de Filtros SQL</h2>
+            <p>Los siguientes filtros SQL pueden utilizarse para limpiar y validar los datos:</p>
+            <table>
+                <tr>
+                    <th>Severidad</th>
+                    <th>Columna</th>
+                    <th>Filtro SQL</th>
+                    <th>Descripción</th>
+                </tr>
+                {rows}
+            </table>
+            <p><small><strong>Nota:</strong> Estos filtros se sugieren basados en los problemas detectados. Ajústalos según tu base de datos específica.</small></p>
         </div>
         """

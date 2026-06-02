@@ -21,6 +21,7 @@ from modules.validators import DataValidator
 from modules.recommendations import RecommendationGenerator
 from modules.report_generator import ReportGenerator
 from modules.severity_analyzer import SeverityAnalyzer
+from modules.sql_filter_suggestions import SQLFilterSuggestions
 
 
 # Configuración de la página
@@ -700,6 +701,65 @@ with tab4:
                                 st.write(f"**Ejemplo:** {rec['examples']}")
                 else:
                     st.success("✅ No se requieren normalizaciones especiales")
+                
+                st.divider()
+                
+                # Sugerencias de Filtros SQL
+                st.subheader("🔍 Sugerencias de Filtros SQL")
+                st.write("Queries SQL que pueden utilizarse para limpiar y validar los datos:")
+                
+                sql_suggester = SQLFilterSuggestions(profile, validation_results, df)
+                sql_suggestions = sql_suggester.generate_all_suggestions()
+                
+                # Agrupa por categoría
+                for category, filters_list in sql_suggestions.items():
+                    if filters_list:
+                        category_name = category.replace('_', ' ').title()
+                        st.markdown(f"#### {category_name}")
+                        
+                        for filter_item in filters_list[:5]:  # Máximo 5 por categoría
+                            severity = filter_item.get('severity', 'AVISO')
+                            severity_icon = {
+                                'CRÍTICO': '🔴',
+                                'GRAVE': '🟠',
+                                'AVISO': '🟡'
+                            }.get(severity, '⚪')
+                            
+                            column = filter_item.get('column', 'GENERAL')
+                            problem = filter_item.get('problem', '')
+                            
+                            with st.expander(f"{severity_icon} {column} - {problem}"):
+                                # SQL principal
+                                filter_sql = filter_item.get('filter_sql', filter_item.get('filter_sql_simple', 'N/A'))
+                                st.code(filter_sql, language='sql')
+                                
+                                # Descripción
+                                description = filter_item.get('description', '')
+                                if description:
+                                    st.write(f"**Descripción:** {description}")
+                                
+                                # Impacto
+                                impact = filter_item.get('impact', '')
+                                if impact:
+                                    st.write(f"**Impacto:** {impact}")
+                                
+                                # Alternativas
+                                if 'filter_type_2' in filter_item:
+                                    st.write("**Alternativa:**")
+                                    st.code(filter_item['filter_type_2'], language='sql')
+                                
+                                if 'alternative' in filter_item:
+                                    st.write("**Alternativa avanzada:**")
+                                    st.code(filter_item['alternative'], language='sql')
+                                
+                                if 'cleanup_sql' in filter_item:
+                                    st.write("**Para limpiar datos:**")
+                                    st.code(filter_item['cleanup_sql'], language='sql')
+                        
+                        st.divider()
+                
+                # Nota final
+                st.info("💡 **Nota:** Estos filtros SQL son sugerencias basadas en los problemas detectados. Ajústalos según tu base de datos específica y requiere antes su validación.")
 
 
 # ============================================================================
