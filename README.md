@@ -1,452 +1,276 @@
-# 📊 Analizador de Calidad de Datos CSV
+# 📊 Analizador de Calidad de Datos CSV - v2.0
 
 ![Tests](https://img.shields.io/badge/tests-85+-green) ![Python](https://img.shields.io/badge/python-3.8+-blue) ![Status](https://img.shields.io/badge/status-stable-green)
 
-Herramienta local para analizar archivos CSV e identificar posibles problemas de calidad de datos. Diseñada como apoyo preliminar y referencia dentro de procesos ETL, requiere validación posterior mediante controles formales y revisión humana.
+Herramienta completa para analizar archivos CSV, identificar problemas de calidad de datos, y **generar código listo para producción** que incluye limpieza, validación y carga a BD.
 
-## 🎯 Características
+## 🎯 Características Principales
 
-### Identificación de Posibles Problemas
-- ✅ Registros nulos y campos vacíos
-- ✅ Filas potencialmente duplicadas (completas y parciales)
-- ✅ Tipos de datos inferidos por columna
-- ✅ Columnas con posible mezcla de tipos de datos
-- ✅ Valores fuera de rango numérico esperado
-- ✅ Fechas con formatos inconsistentes o inválidos
-- ✅ Formato de correos electrónicos potencialmente inválidos
-- ✅ Formato de teléfonos potencialmente inválidos
-- ✅ Texto con caracteres especiales anómalos
-- ✅ Columnas con cardinalidad inusual
-- ✅ Columnas con exceso de valores faltantes
+### 📊 Análisis Completo de Datos
+- ✅ Detección de nulos, duplicados, tipos mixtos
+- ✅ Análisis estadístico y perfilado automático
+- ✅ Validación de emails, teléfonos, fechas, URLs
+- ✅ Detección de anomalías y outliers
+- ✅ Cardinalidad y distribución de valores
 
-### Generación de Reportes Preliminares
-- 📊 Información general del dataset
-- 📈 Análisis estadístico descriptivo
-- ❌ Análisis de valores nulos
-- 🔄 Detección de duplicados
-- ✅ Validaciones preliminares (email, teléfono, fecha, etc.)
-- 💡 Recomendaciones iniciales de limpieza
-- 🗄️ Reglas sugeridas para base de datos (NOT NULL, UNIQUE, CHECK, etc.)
-- 🔧 Sugerencias de normalización
-- 📥 Exportación en Excel y HTML
+### 💡 Recomendaciones Inteligentes
+- ✅ Sugerencias de limpieza específicas
+- ✅ Reglas SQL automáticas (NOT NULL, UNIQUE, CHECK)
+- ✅ Recomendaciones de normalización
+- ✅ **Filtros SQL listos para usar**
 
----
+### 🗄️ ✨ Generación de Código SQL/Python (NUEVO)
+- ✅ Script SQL completo (CREATE TABLE + INSERT)
+- ✅ Código Python de limpieza con pandas
+- ✅ Estandarización automática de fechas, monedas
+- ✅ Eliminación de duplicados y nulos
+- ✅ Queries de validación final
 
-## ⚠️ Alcance y Limitaciones
+### ⚙️ ✨ Configuración Personalizada (NUEVO)
+- ✅ Carga configuración YAML/JSON propia
+- ✅ Validaciones personalizadas por dominio
+- ✅ Reglas de negocio específicas
 
-### 🎯 ¿Qué es esta herramienta?
-
-Este proyecto es una **aplicación local de análisis preliminar** diseñada como herramienta de **consulta y referencia** dentro de procesos ETL/Big Data. Su propósito es ayudarte a:
-
-- 🔍 **Identificar posibles problemas** de calidad en archivos CSV antes de ingestión
-- 📊 **Servir como segunda opinión** en análisis de datos exploratorio
-- 💡 **Generar recomendaciones iniciales** que requieren validación posterior
-
-### ❌ Lo que **NO es** esta herramienta
-
-- ❌ **NO** es un sistema de validación formal o certificado
-- ❌ **NO** debe usarse como fuente única de verdad para decisiones críticas  
-- ❌ **NO** reemplaza controles ETL formales ni validaciones en base de datos
-- ❌ **NO** garantiza detección exhaustiva de todos los problemas
-- ❌ **NO** es adecuada para tomar decisiones automáticas sobre datos de producción
-
-### 🧪 Naturaleza de las validaciones
-
-Las validaciones empleadas son **heurísticas y básicas**:
-- Pueden generar **falsos positivos** (alertar problemas que no existen)
-- Pueden generar **falsos negativos** (perder problemas reales)
-- Usan patrones simples y reglas predeterminadas, no análisis estadístico avanzado
-
-### ✅ Uso recomendado
-
-1. **Análisis Exploratorio**: Entender la estructura y calidad general de un CSV
-2. **Validación Preliminar**: Identificar problemas obvios antes de procesos más rigurosos
-3. **Documentación de Descubrimientos**: Usar como base para investigaciones posteriores
-4. **Apoyo a Procesos ETL**: Complementar (no reemplazar) reglas ETL formales
-
-### 🔒 Decisiones que requieren validación adicional
-
-Antes de proceder con cualquiera de estas acciones, **valida con herramientas especializadas o revisión humana**:
-
-- Rechazo o eliminación de datos
-- Transformaciones automáticas en masa
-- Carga a sistemas de producción
-- Cambios en reglas de negocio basados en los hallazgos
-
-### 📌 Responsabilidad
-
-La responsabilidad de validar datos y tomar decisiones críticas **recae en el usuario**, no en esta herramienta. Los resultados son indicativos y deben ser contrastados con:
-- Reglas ETL formales del proceso
-- Validaciones en base de datos (constraints, triggers)
-- Revisión manual o auditoría humana
-- Herramientas especializadas en calidad de datos
+### 📥 ✨ Reportes Mejorados (NUEVO)
+- ✅ Excel con **14 hojas** de análisis completo
+- ✅ HTML con información interactiva
+- ✅ Incluye código SQL/Python generado
+- ✅ Configuración YAML exportada
 
 ---
 
-## 💾 Archivos Grandes y Carga por Chunks
-
-### Soporte Automático para Archivos Grandes
-
-La herramienta detecta automáticamente archivos grandes (> 100 MB) y los carga por **chunks** para optimizar el uso de memoria:
-
-```
-Tamaño archivo  │  Método de carga
-────────────────┼──────────────────
-< 100 MB        │  Carga completa (rápido)
-100 MB - 1 GB   │  Chunks automático (memoria eficiente)
-> 1 GB          │  Error (límite máximo)
-```
-
-### Cómo Funciona
-
-1. **Detección automática**: Cuando subes un archivo > 100 MB, se activa carga por chunks
-2. **Procesamiento por bloques**: Se leen 50,000 filas por vez
-3. **Análisis transparente**: Los resultados son los mismos que con carga normal
-4. **Combina datos**: Los chunks se combinan para el análisis final
-
-### Consideraciones
-
-- ⚡ **Velocidad**: Archivos grandes toman más tiempo en procesar
-- 💾 **RAM**: Requiere mucho menos RAM (ideal para máquinas 8-32 GB)
-- ⚠️ **Estadísticas**: Algunas métricas pueden ser aproximaciones (bad_lines_count es estimado)
-- 📊 **Precisión**: La precisión de análisis no se ve afectada
-
-### Ejemplo
-
-```
-# Archivo de 500 MB
-Carga: ⏳ Cargando archivo grande por chunks...
-UI:    ℹ️ "Archivo grande (500.5 MB) cargado en 10 chunk(s)"
-Resultado: 2,500,000 filas analizadas correctamente
-```
-
----
-
-## 🎯 **Validación por Dominio**
-
-### Reglas Predefinidas por Sector
-
-La herramienta incluye reglas de validación predefinidas para múltiples dominios. **Estas son referencias de buenas prácticas, no validaciones formales.**
-
-Dominios soportados:
-
-| Dominio | Reglas Incluidas | Ejemplo |
-|---------|------------------|---------|
-| **Healthcare** | age, heart_rate, temperature, blood_pressure, glucose, weight | Edad: 0-120 años |
-| **E-Commerce** | price, stock, discount_percent, product_code, sku | Stock >= 0, Descuento 0-100% |
-| **HR** | age, salary, employee_id, department | Edad: 18-75, Salario > 500 |
-| **Finance** | transaction_amount, interest_rate, account_balance, iban | Tasa: 0-100%, IBAN válido |
-| **Government** | age, population, zip_code, tax_id | ZIP: 5 dígitos, NIF válido |
-
-### Cómo Usar
-
-1. Carga tu archivo CSV
-2. Ve a pestaña **"Validaciones"**
-3. Expande **"🎯 Validación por Dominio (Opcional)"**
-4. Selecciona tu dominio
-5. Verás columnas coincidentes y sus violaciones de reglas
-
-### Ejemplo
-
-```
-Dominio: ECOMMERCE
-Columnas: [price, stock, discount_percent]
-
-price:
-  - Regla: min=0, max=null
-  - Violaciones: 3 (2.1%)
-  - Comentario: "Precio debe ser >= 0"
-
-stock:
-  - Regla: min=0, max=null
-  - Violaciones: 0 (0.0%)
-  - Comentario: "Stock no puede ser negativo"
-```
-
-### Personalizar Reglas
-
-Para agregar dominios o reglas propias:
-1. Edita `config/domain_templates.yaml`
-2. Sigue formato YAML existente
-3. Reinicia la aplicación
-4. Las nuevas reglas estarán disponibles
-
----
-
-##  Instalación
-
-### 1. Clonar o descargar el proyecto
+## 🚀 Instalación y Uso Rápido
 
 ```bash
-# Si tienes Git
+# 1. Clonar/descargar proyecto
 git clone <repositorio>
 cd csv-data-analyzer
 
-# O simplemente descarga los archivos del proyecto
-```
-
-### 2. Crear un entorno virtual (recomendado)
-
-```bash
-# En Windows
+# 2. Crear entorno virtual
 python -m venv venv
-venv\Scripts\activate
+venv\\Scripts\\activate  # Windows
+source venv/bin/activate  # macOS/Linux
 
-# En macOS/Linux
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### 3. Instalar dependencias
-
-```bash
+# 3. Instalar dependencias
 pip install -r requirements.txt
-```
 
-**Dependencias incluidas:**
-- `streamlit==1.40.0` - Framework web para la interfaz
-- `pandas==2.2.0` - Procesamiento y análisis de datos
-- `openpyxl==3.11.0` - Exportación a Excel
-- `email-validator==2.1.0` - Validación de emails
-- `python-dateutil==2.8.2` - Procesamiento de fechas
-- `numpy==1.24.3` - Operaciones numéricas
-
-## 🧪 Pruebas Automatizadas
-
-### Ejecutar la suite de pruebas
-
-```bash
-# Instalar herramientas de testing (si no está en requirements.txt)
-pip install pytest pytest-cov
-
-# Ejecutar todas las pruebas
-pytest
-
-# Ejecutar con modo verbose
-pytest -v
-
-# Ejecutar con cobertura de código
-pytest --cov=modules --cov=utils --cov-report=html
-
-# Ejecutar un archivo específico
-pytest tests/test_csv_loader.py
-
-# Ejecutar una prueba específica
-pytest tests/test_validators.py::TestDateValidation::test_validate_dates_consistent_format
-```
-
-### Cobertura de Pruebas
-
-- ✅ **CSV Loader** (25+ tests): Detección de delimitador, limpieza de columnas, bad lines, validación de tamaño, **carga por chunks**
-- ✅ **Validadores** (28+ tests): Emails, teléfonos, fechas, URLs, detección por contenido, umbral de consistencia
-- ✅ **Data Profiler** (13 tests): Análisis de nulos, duplicados, perfiles de columnas, uso de memoria
-- ✅ **Patrones** (18 tests): Expresiones regulares, inferencia de tipo, detección de caracteres especiales
-
-**Total: ~85+ pruebas unitarias**
-
-Ubicación: [`tests/`](tests/) directorio
-
-Para más detalles, ver [tests/README.md](tests/README.md)
-
----
-
-## ⚙️ Integración Continua
-
-### Estado Actual
-
-**ℹ️ Este proyecto NO tiene CI/CD configurado** (GitHub Actions, GitLab CI, etc.).
-
-Para desarrolladores locales:
-- Ejecuta `pytest` antes de hacer push
-- Los tests se ejecutan en tu máquina
-- Responsabilidad manual de validar cambios
-
-### Para Agregar CI/CD (Opcional)
-
-Si deseas automatizar tests en cada commit/PR, puedes:
-
-1. **GitHub Actions** - Crear `.github/workflows/tests.yml`
-2. **GitLab CI** - Crear `.gitlab-ci.yml`
-3. **Otros**: Jenkins, Azure Pipelines, etc.
-
-Ejemplo básico para GitHub:
-
-```yaml
-# .github/workflows/tests.yml
-name: Tests
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.9
-      - run: pip install -r requirements.txt
-      - run: pytest --cov=modules --cov=utils
-```
-
----
-
-## 📖 Uso
-
-### Ejecutar la aplicación
-
-```bash
+# 4. Ejecutar
 streamlit run app.py
 ```
 
-La aplicación se abrirá en tu navegador (generalmente en `http://localhost:8501`)
+Accede a `http://localhost:8501` en tu navegador.
 
-### Flujo de Uso
+---
 
-#### 1. **Cargar Archivo** 📥
-   - Ve a la pestaña "Cargar Archivo"
-   - Selecciona tu archivo CSV
-   - Opcionalmente, especifica el delimitador y codificación
-   - El sistema detectará automáticamente las características del archivo
+## 📱 Interfaz de Usuario - 8 Pestañas
 
-#### 2. **Análisis** 📈
-   - La pestaña "Análisis" muestra un resumen completo:
-     - Información general (filas, columnas, memoria)
-     - Análisis de valores nulos
-     - Detección de duplicados
-     - Identificación de cadenas vacías
-     - Mezcla de tipos de datos
-     - Cardinalidad de columnas
+| # | Pestaña | Descripción |
+|----|---------|----------|
+| 1️⃣ | 📥 Cargar Archivo | Sube CSV, configura delimitador/codificación |
+| 2️⃣ | 📈 Análisis | Nulos, duplicados, tipos, estadísticas |
+| 3️⃣ | ✅ Validaciones | Email, teléfono, fecha, URL, dominio |
+| 4️⃣ | 💡 Recomendaciones | Limpieza, reglas SQL, normalización, **filtros SQL** |
+| 5️⃣ | 📋 Datos Problemáticos | Ejemplos de filas con problemas |
+| 6️⃣ | 💾 Código SQL/Python | **Script SQL + Python + YAML generado** ✨ |
+| 7️⃣ | ⚙️ Configuración | **Carga tu YAML/JSON personalizado** ✨ |
+| 8️⃣ | 📥 Descargar Reporte | Excel (14 hojas) + HTML |
 
-#### 3. **Validaciones** ✅
-   - Revisa validaciones específicas:
-     - Emails válidos/inválidos
-     - Teléfonos válidos/inválidos
-     - Fechas válidas/inválidas
-     - Valores numéricos fuera de rango
-     - Texto con caracteres especiales
-     - URLs válidas/inválidas
-   - **Validación por Dominio** (NUEVA): Reglas predefinidas para:
-     - Healthcare (edad, presión arterial, glucosa, etc.)
-     - E-Commerce (precio, stock, descuento)
-     - HR (edad laboral, salario, departamento)
-     - Finance (montos, tasas, IBAN)
-     - Gobierno (población, códigos, IDs)
+---
 
-#### 4. **Recomendaciones** 💡
-   - Obtén sugerencias de limpieza
-   - Reglas para base de datos (SQL)
-   - Operaciones de normalización
+## 💾 Nuevo: Generación Automática de Código
 
-#### 5. **Datos Problemáticos** 📋
-   - Visualiza ejemplos de datos con problemas
-   - Filas duplicadas
-   - Columnas problemáticas
+### Script SQL Generado Automáticamente
+```sql
+-- CREATE TABLE automático con tipos inferidos
+CREATE TABLE IF NOT EXISTS datos_limpios (
+  id INT PRIMARY KEY,
+  nombre VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE,
+  fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-#### 6. **Descargar Reporte** 📥
-   - Genera reportes en Excel o HTML
-   - Los reportes incluyen todas las pestañas de análisis
-   - Se guardan automáticamente en la carpeta `output/`
-
-## 📊 Estructura del Proyecto
-
-```
-csv-data-analyzer/
-├── app.py                    # Aplicación principal (Streamlit)
-├── config.py                 # Configuración global
-├── requirements.txt          # Dependencias
-├── README.md                 # Este archivo
-│
-├── modules/                  # Módulos principales
-│   ├── __init__.py
-│   ├── csv_loader.py         # Carga y validación de CSV
-│   ├── data_profiler.py      # Análisis y perfilado de datos
-│   ├── validators.py         # Validaciones específicas
-│   ├── recommendations.py    # Generador de recomendaciones
-│   └── report_generator.py   # Exportación de reportes
-│
-├── utils/                    # Utilidades
-│   ├── __init__.py
-│   ├── helpers.py            # Funciones auxiliares
-│   └── patterns.py           # Patrones y expresiones regex
-│
-└── output/                   # Reportes generados
-    └── (archivos generados automáticamente)
+-- INSERT con limpieza, estandarización y filtros
+WITH cleaned_data AS (
+  SELECT
+    TRIM(id) AS id_clean,
+    LOWER(TRIM(email)) AS email_clean,
+    TRY_CAST(TRIM(fecha) AS DATE) AS fecha_clean
+  FROM source_table
+  WHERE email LIKE '%@%'
+    AND TRIM(email) IS NOT NULL
+)
+INSERT INTO datos_limpios (id, email, fecha)
+SELECT id_clean, email_clean, fecha_clean
+FROM cleaned_data
+WHERE ROW_NUMBER() OVER (PARTITION BY id ORDER BY 1) = 1;
 ```
 
-## 📚 Módulos y Funciones Clave
-
-### `csv_loader.py` - Carga de Archivos
+### Código Python Generado Automáticamente
 ```python
-from modules.csv_loader import CSVLoader
-
-# Cargar CSV con detección automática
-df, info = CSVLoader.load_csv(file_object)
-
-# Información devuelta
-# {
-#     'delimiter': ',',
-#     'encoding': 'utf-8',
-#     'rows': 1000,
-#     'columns': 15
-# }
+def cleanup_data(df):
+    df_clean = df.copy()
+    
+    # Eliminar duplicados
+    df_clean = df_clean.drop_duplicates(keep='first')
+    
+    # Limpiar espacios
+    df_clean = df_clean.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+    
+    # Estandarizar tipos
+    df_clean['id'] = pd.to_numeric(df_clean['id'], errors='coerce').astype('Int64')
+    df_clean['email'] = df_clean['email'].str.lower()
+    df_clean['fecha'] = pd.to_datetime(df_clean['fecha'], errors='coerce')
+    
+    return df_clean
 ```
 
-### `data_profiler.py` - Análisis de Datos
-```python
-from modules.data_profiler import DataProfiler
+---
 
-profiler = DataProfiler(df)
-profile = profiler.generate_profile()
+## 📊 Contenido del Reporte Excel (14 Hojas)
 
-# Accede a diferentes análisis
-nulos = profile['null_analysis']
-duplicados = profile['duplicates']
-columnas = profile['column_profiles']
+| # | Hoja | Contenido |
+|---|------|----------|
+| 1 | **RESUMEN_EJECUTIVO** | Métricas clave y conteos |
+| 2 | **INFO_GENERAL** | Información básica del dataset |
+| 3 | **ANALISIS_NULOS** | Valores nulos por columna |
+| 4 | **FILAS_Y_UTILIDAD** | Filas completas y utilidad |
+| 5 | **DUPLICADOS** | Registros duplicados |
+| 6 | **PERFIL_COLUMNAS** | Tipos de datos y cardinalidad |
+| 7 | **VALIDACIONES** | Resultados de validaciones |
+| 8 | **LIMPIEZA** | Recomendaciones de limpieza |
+| 9 | **REGLAS_BD** | Reglas SQL sugeridas |
+| 10 | **NORMALIZACION** | Transformaciones recomendadas |
+| 11 | **FILTROS_SQL** | Filtros SQL por problema |
+| 12 | **CODIGO_SQL** | ✨ **Script SQL completo** |
+| 13 | **CODIGO_PYTHON** | ✨ **Script Python** |
+| 14 | **CONFIG_YAML** | ✨ **Configuración YAML** |
+
+---
+
+## ⚙️ Configuración Personalizada YAML
+
+```yaml
+database:
+  table_name: datos_limpios
+  charset: utf8mb4
+
+columns:
+  email:
+    type: VARCHAR(255)
+    nullable: false
+    unique: true
+    validations: [email]
+  
+  edad:
+    type: INT
+    nullable: false
+
+cleaning:
+  trim_whitespace: true
+  remove_duplicates: true
+  handle_nulls: remove
+
+validation_rules:
+  min_rows: 100
+  max_null_percent: 20
 ```
 
-### `validators.py` - Validaciones
-```python
-from modules.validators import DataValidator
+**Cómo usar:**
+1. Ve a pestaña "⚙️ Configuración"
+2. Carga tu archivo YAML/JSON
+3. Las validaciones se personalizan automáticamente
 
-validator = DataValidator(df)
-results = validator.validate_all()
+---
 
-# Contiene validaciones para:
-# - Emails
-# - Teléfonos
-# - Fechas
-# - Números
-# - Texto
-# - URLs
+## 📈 Validación por Dominio
+
+Reglas predefinidas para sectores:
+
+| Dominio | Ejemplo |
+|---------|---------|
+| Healthcare | Edad: 0-120, Temp: 36-41°C, Presión: 60-200 |
+| E-Commerce | Precio ≥ 0, Stock ≥ 0, Descuento 0-100% |
+| HR | Edad: 18-75, Salario > 500 |
+| Finance | Tasa: 0-100%, IBAN válido |
+| Gobierno | ZIP: 5 dígitos, NIF válido |
+
+---
+
+## ⚠️ Notas Importantes
+
+### Alcance
+- ✅ **SÍ es**: Análisis exploratorio, validación preliminar
+- ❌ **NO es**: Sistema formal certificado
+
+### Antes de Producción
+- Valida código SQL con tu DBA
+- Prueba con datos de ejemplo
+- Ajusta según tu contexto específico
+- Responsabilidad del usuario
+
+---
+
+## 📚 Estructura del Proyecto
+
+```
+.
+├── app.py                           # App principal Streamlit
+├── config.py                        # Configuración global
+├── modules/
+│   ├── csv_loader.py               # Carga de archivos
+│   ├── data_profiler.py            # Perfilado
+│   ├── validators.py               # Validaciones
+│   ├── recommendations.py          # Recomendaciones
+│   ├── report_generator.py         # Reportes
+│   ├── severity_analyzer.py        # Análisis severidad
+│   ├── sql_filter_suggestions.py   # Filtros SQL
+│   └── db_code_generator.py        # ✨ Generador SQL/Python
+├── utils/
+│   ├── helpers.py
+│   └── patterns.py
+└── tests/                           # Tests unitarios (85+ tests)
 ```
 
-### `recommendations.py` - Recomendaciones
-```python
-from modules.recommendations import RecommendationGenerator
+---
 
-rec_gen = RecommendationGenerator(profile, validation_results)
-recommendations = rec_gen.generate_all_recommendations()
+## 🧪 Pruebas
 
-# Devuelve:
-# {
-#     'cleaning': [...],
-#     'database_rules': [...],
-#     'normalization': [...],
-#     'quality': [...]
-# }
+```bash
+# Ejecutar todos los tests
+pytest
+
+# Con cobertura
+pytest --cov=modules --cov=utils
+
+# Archivo específico
+pytest tests/test_validators.py -v
 ```
 
-### `report_generator.py` - Reportes
-```python
-from modules.report_generator import ReportGenerator
+**Cobertura:** 85+ tests para CSV Loader, Validators, Profiler, Patterns
 
-report_gen = ReportGenerator(df, profile, validation_results, recommendations)
+---
 
-# Generar Excel
-excel_path = report_gen.generate_excel_report('nombre_reporte')
+## 💾 Archivos Grandes
 
-# Generar HTML
-html_path = report_gen.generate_html_report('nombre_reporte')
+Soporte automático para archivos **> 100 MB**:
+
 ```
+Tamaño          Método
+< 100 MB        Carga completa
+100 MB - 1 GB   Chunks automático (50K filas/chunk)
+```
+
+---
+
+## 📝 Versión y Licencia
+
+**Versión:** 2.0.0  
+**Última actualización:** Junio 2026  
+**Licencia:** MIT
+
+---
+
+**Hecha con ❤️ para simplificar análisis de calidad de datos**
 
 ## 🔍 Ejemplos de Uso
 

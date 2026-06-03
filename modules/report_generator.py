@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from utils.helpers import ReportHelper, StringHelper
 from modules.severity_analyzer import SeverityAnalyzer
 from modules.sql_filter_suggestions import SQLFilterSuggestions
+from modules.db_code_generator import DatabaseCodeGenerator
 
 
 class ReportGenerator:
@@ -35,6 +36,9 @@ class ReportGenerator:
         # Genera sugerencias de filtros SQL
         sql_suggester = SQLFilterSuggestions(profile, validation_results, df)
         self.sql_suggestions = sql_suggester.generate_all_suggestions()
+        
+        # Genera código para BD
+        self.db_generator = DatabaseCodeGenerator(df, profile, validation_results)
         
         ReportHelper.create_output_directory()
     
@@ -84,7 +88,16 @@ class ReportGenerator:
             # Hoja 10: Sugerencias de Filtros SQL
             self._write_sql_filters_sheet(writer)
             
-            # Hoja 11: Muestras de Datos Problemáticos
+            # Hoja 11: Código SQL de Limpieza
+            self._write_db_code_sheet(writer)
+            
+            # Hoja 12: Código Python de Limpieza
+            self._write_python_code_sheet(writer)
+            
+            # Hoja 13: Configuración YAML
+            self._write_config_yaml_sheet(writer)
+            
+            # Hoja 14: Muestras de Datos Problemáticos
             self._write_problem_samples_sheet(writer)
         
         return filepath
@@ -379,6 +392,52 @@ class ReportGenerator:
         
         df_norm = pd.DataFrame(norm_data)
         df_norm.to_excel(writer, sheet_name='NORMALIZACION', index=False)
+    
+    def _write_db_code_sheet(self, writer):
+        """Escribe el código SQL para limpiar y cargar datos."""
+        sql_script = self.db_generator.generate_complete_script()
+        
+        # Divide el script en líneas y crea un DataFrame
+        code_data = {
+            'SQL Script - Crear Tabla y Cargar Datos': [sql_script]
+        }
+        
+        df_code = pd.DataFrame(code_data)
+        df_code.to_excel(writer, sheet_name='CODIGO_SQL', index=False)
+        
+        # Ajusta el ancho de columna
+        ws = writer.sheets['CODIGO_SQL']
+        ws.column_dimensions['A'].width = 150
+    
+    def _write_python_code_sheet(self, writer):
+        """Escribe el código Python para limpiar datos."""
+        python_script = self.db_generator.generate_python_cleanup_code()
+        
+        code_data = {
+            'Python Cleanup Script': [python_script]
+        }
+        
+        df_code = pd.DataFrame(code_data)
+        df_code.to_excel(writer, sheet_name='CODIGO_PYTHON', index=False)
+        
+        # Ajusta el ancho de columna
+        ws = writer.sheets['CODIGO_PYTHON']
+        ws.column_dimensions['A'].width = 150
+    
+    def _write_config_yaml_sheet(self, writer):
+        """Escribe la configuración YAML personalizada."""
+        yaml_config = self.db_generator.generate_config_yaml()
+        
+        config_data = {
+            'Configuración YAML': [yaml_config]
+        }
+        
+        df_config = pd.DataFrame(config_data)
+        df_config.to_excel(writer, sheet_name='CONFIG_YAML', index=False)
+        
+        # Ajusta el ancho de columna
+        ws = writer.sheets['CONFIG_YAML']
+        ws.column_dimensions['A'].width = 150
     
     def _write_problem_samples_sheet(self, writer):
         """Escribe muestras de datos problemáticos."""

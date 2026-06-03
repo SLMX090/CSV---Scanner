@@ -22,6 +22,7 @@ from modules.recommendations import RecommendationGenerator
 from modules.report_generator import ReportGenerator
 from modules.severity_analyzer import SeverityAnalyzer
 from modules.sql_filter_suggestions import SQLFilterSuggestions
+from modules.db_code_generator import DatabaseCodeGenerator
 
 
 # Configuración de la página
@@ -122,12 +123,14 @@ with st.sidebar:
 
 
 # Sección principal
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "📥 Cargar Archivo",
     "📈 Análisis",
     "✅ Validaciones",
     "💡 Recomendaciones",
     "📋 Datos Problemáticos",
+    "💾 Código SQL/Python",
+    "⚙️ Configuración",
     "📥 Descargar Reporte"
 ])
 
@@ -810,6 +813,140 @@ with tab5:
                     st.warning(f"**{col}**: {issues['detected_types']}")
             else:
                 st.success("✅ Todas las columnas tienen tipos de datos consistentes")
+
+
+# ============================================================================
+# TAB 7: CÓDIGO SQL/PYTHON
+# ============================================================================
+with tab7:
+    if 'df' not in st.session_state:
+        st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
+    else:
+        st.header("Código Generado para BD y Limpieza")
+        
+        if 'profile' not in st.session_state:
+            st.warning("⚠️ Ejecuta primero el análisis")
+        else:
+            df = st.session_state.df
+            profile = st.session_state.profile
+            validation_results = st.session_state.validation_results
+            
+            # Genera código
+            db_gen = DatabaseCodeGenerator(df, profile, validation_results)
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.subheader("📋 SQL Completo")
+                sql_code = db_gen.generate_complete_script()
+                st.code(sql_code, language='sql')
+                
+                # Descargar SQL
+                st.download_button(
+                    label="⬇️ Descargar Script SQL",
+                    data=sql_code,
+                    file_name=f"script_limpieza_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql",
+                    mime="text/plain"
+                )
+            
+            with col2:
+                st.subheader("🐍 Código Python")
+                python_code = db_gen.generate_python_cleanup_code()
+                st.code(python_code, language='python')
+                
+                # Descargar Python
+                st.download_button(
+                    label="⬇️ Descargar Script Python",
+                    data=python_code,
+                    file_name=f"cleanup_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py",
+                    mime="text/plain"
+                )
+            
+            with col3:
+                st.subheader("⚙️ Configuración YAML")
+                yaml_config = db_gen.generate_config_yaml()
+                st.code(yaml_config, language='yaml')
+                
+                # Descargar YAML
+                st.download_button(
+                    label="⬇️ Descargar Config YAML",
+                    data=yaml_config,
+                    file_name=f"config_validacion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml",
+                    mime="text/plain"
+                )
+
+
+# ============================================================================
+# TAB 8: CONFIGURACIÓN PERSONALIZADA
+# ============================================================================
+with tab8:
+    st.header("⚙️ Configuración Personalizada de Validación")
+    
+    st.info("""
+    💡 Carga tu propio archivo de configuración (YAML o JSON) para personalizar 
+    las reglas de validación según tu caso específico.
+    """)
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("📤 Cargar Configuración")
+        
+        config_file = st.file_uploader(
+            "Selecciona archivo de configuración (YAML o JSON)",
+            type=['yaml', 'yml', 'json'],
+            help="Archivo con reglas personalizadas de validación"
+        )
+        
+        if config_file:
+            st.success("✅ Archivo cargado")
+            
+            # Leer contenido
+            if config_file.name.endswith(('.yaml', '.yml')):
+                import yaml
+                config = yaml.safe_load(config_file)
+                st.session_state.custom_config = config
+            else:  # JSON
+                import json
+                config = json.load(config_file)
+                st.session_state.custom_config = config
+            
+            st.info(f"📋 Configuración cargada: {len(str(config))} caracteres")
+    
+    with col2:
+        st.subheader("📝 Plantilla de Configuración")
+        
+        template = """# Configuración personalizada de validación
+database:
+  table_name: datos_limpios
+  charset: utf8mb4
+
+columns:
+  nombre_columna:
+    type: TEXT  # TEXT, INT, DECIMAL, DATE
+    nullable: false
+    unique: false
+    validations: [email]  # email, phone, date
+
+cleaning:
+  trim_whitespace: true
+  remove_duplicates: true
+  handle_nulls: remove  # remove, fill_default, keep
+  standardize_case: true
+
+validation_rules:
+  min_rows: 10
+  max_null_percent: 30
+  email_valid: true
+  phone_valid: true
+"""
+        st.code(template, language='yaml')
+        
+        # Mostrar configuración cargada si existe
+        if 'custom_config' in st.session_state:
+            st.divider()
+            st.subheader("✅ Configuración Actual")
+            st.json(st.session_state.custom_config)
 
 
 # ============================================================================
