@@ -816,9 +816,9 @@ with tab5:
 
 
 # ============================================================================
-# TAB 6: CÓDIGO SQL/PYTHON
+# TAB 7: CÓDIGO SQL/PYTHON
 # ============================================================================
-with tab6:
+with tab7:
     if 'df' not in st.session_state:
         st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
     else:
@@ -877,9 +877,9 @@ with tab6:
 
 
 # ============================================================================
-# TAB 7: CONFIGURACIÓN PERSONALIZADA
+# TAB 8: CONFIGURACIÓN PERSONALIZADA
 # ============================================================================
-with tab7:
+with tab8:
     st.header("⚙️ Configuración Personalizada de Validación")
     
     st.info("""
@@ -950,9 +950,9 @@ validation_rules:
 
 
 # ============================================================================
-# TAB 8: DESCARGAR REPORTE
+# TAB 6: DESCARGAR REPORTE
 # ============================================================================
-with tab8:
+with tab6:
     st.header("Descarga de Reportes")
     
     if 'df' not in st.session_state:
