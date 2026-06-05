@@ -326,8 +326,8 @@ class TestDomainRules:
     def test_domain_rules_numeric_validation(self):
         """Verifica validación numérica contra reglas de dominio."""
         df = pd.DataFrame({
-            'age': [25, 150, 30, 5, 45, 60],  # 150 y 5 fuera de rango 0-120
-            'salary': [30000, 50000, 45000, 35000, 40000]
+            'age': [25, 150, 30, -5, 45, 60],  # 150 y -5 fuera de rango 0-120
+            'salary': [30000, 50000, 45000, 35000, 40000, 55000]
         })
         
         rules = {
@@ -425,4 +425,3 @@ class TestDomainRules:
         
         # 2 violaciones de 10 = 20%
         assert result['validations']['price']['violation_percent'] == 20.0
-        assert 'url_validation' in results

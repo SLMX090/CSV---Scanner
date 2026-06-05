@@ -24,6 +24,7 @@ build/
 
 # Reportes generados
 output/
+*.sql
 *.xlsx
 *.html
 

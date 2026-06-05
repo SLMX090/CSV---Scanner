@@ -24,6 +24,9 @@ from modules.severity_analyzer import SeverityAnalyzer
 from modules.sql_filter_suggestions import SQLFilterSuggestions
 from modules.db_code_generator import DatabaseCodeGenerator
 
+# Importar dialectos y valor por defecto para construcción de scripts SQL
+from config import SQL_DIALECTS, DEFAULT_SQL_DIALECT
+
 
 # Configuración de la página
 st.set_page_config(
@@ -823,51 +826,97 @@ with tab6:
         st.info("⚠️ Primero carga un archivo en la pestaña 'Cargar Archivo'")
     else:
         st.header("Código Generado para BD y Limpieza")
-        
+
         if 'profile' not in st.session_state:
             st.warning("⚠️ Ejecuta primero el análisis")
+        elif 'validation_results' not in st.session_state:
+            st.warning("⚠️ Ejecuta primero las validaciones")
         else:
             df = st.session_state.df
             profile = st.session_state.profile
             validation_results = st.session_state.validation_results
-            
-            # Genera código
-            db_gen = DatabaseCodeGenerator(df, profile, validation_results)
-            
+
+            st.subheader("🗄️ Configuración del Script de Base de Datos")
+
+            dialect_options = list(SQL_DIALECTS.keys())
+            default_dialect_index = (
+                dialect_options.index(DEFAULT_SQL_DIALECT)
+                if DEFAULT_SQL_DIALECT in dialect_options
+                else 0
+            )
+
+            config_col1, config_col2, config_col3 = st.columns([1, 1, 1])
+
+            with config_col1:
+                dialecto_seleccionado = st.selectbox(
+                    "Selecciona el motor de Base de Datos objetivo:",
+                    options=dialect_options,
+                    index=default_dialect_index,
+                    key="sql_dialect_selector"
+                )
+
+            with config_col2:
+                table_name = st.text_input(
+                    "Nombre de la tabla limpia:",
+                    value="datos_limpios",
+                    key="sql_clean_table_name"
+                )
+
+            with config_col3:
+                source_table = st.text_input(
+                    "Nombre de la tabla origen:",
+                    value="source_table",
+                    key="sql_source_table_name"
+                )
+
+            table_name = table_name.strip() or "datos_limpios"
+            source_table = source_table.strip() or "source_table"
+
+            db_gen = DatabaseCodeGenerator(
+                df=df,
+                profile=profile,
+                validation_results=validation_results,
+                table_name=table_name,
+                dialect=dialecto_seleccionado,
+                source_table=source_table
+            )
+
+            st.caption(
+                f"Dialecto seleccionado: **{dialecto_seleccionado}** · "
+                f"Tabla limpia: `{table_name}` · Tabla origen: `{source_table}`"
+            )
+
             col1, col2, col3 = st.columns(3)
-            
+
             with col1:
                 st.subheader("📋 SQL Completo")
                 sql_code = db_gen.generate_complete_script()
                 st.code(sql_code, language='sql')
-                
-                # Descargar SQL
+
                 st.download_button(
                     label="⬇️ Descargar Script SQL",
                     data=sql_code,
-                    file_name=f"script_limpieza_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql",
+                    file_name=f"script_limpieza_{dialecto_seleccionado.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql",
                     mime="text/plain"
                 )
-            
+
             with col2:
                 st.subheader("🐍 Código Python")
                 python_code = db_gen.generate_python_cleanup_code()
                 st.code(python_code, language='python')
-                
-                # Descargar Python
+
                 st.download_button(
                     label="⬇️ Descargar Script Python",
                     data=python_code,
                     file_name=f"cleanup_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py",
                     mime="text/plain"
                 )
-            
+
             with col3:
                 st.subheader("⚙️ Configuración YAML")
                 yaml_config = db_gen.generate_config_yaml()
                 st.code(yaml_config, language='yaml')
-                
-                # Descargar YAML
+
                 st.download_button(
                     label="⬇️ Descargar Config YAML",
                     data=yaml_config,
@@ -875,6 +924,15 @@ with tab6:
                     mime="text/plain"
                 )
 
+            st.divider()
+
+            if st.button("💾 Exportar Scripts v3.2", key="export_scripts_v32", use_container_width=True):
+                try:
+                    archivos = db_gen.export_scripts()
+                    st.success("Scripts exportados correctamente en la carpeta output/")
+                    st.json(archivos)
+                except Exception as e:
+                    st.error(f"❌ Error al exportar scripts: {str(e)}")
 
 # ============================================================================
 # TAB 7: CONFIGURACIÓN PERSONALIZADA
@@ -1030,6 +1088,6 @@ with tab8:
 st.divider()
 st.markdown("""
 ---
-**Analizador de Calidad de Datos CSV** | Versión 1.0.0
+**Analizador de Calidad de Datos CSV** | Versión 3.2.1
 Desarrollado para análisis de datos antes de cargar a base de datos
 """)

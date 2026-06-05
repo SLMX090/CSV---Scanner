@@ -48,6 +48,66 @@ PHONE_KEYWORDS = ['telefono', 'phone', 'celular', 'mobile', 'whatsapp']
 URL_KEYWORDS = ['url', 'website', 'web', 'link']
 ID_KEYWORDS = ['id', 'codigo', 'code', 'identificador']
 
+# ============================================================
+# Configuración SQL v3.2: dialectos soportados
+# ============================================================
+
+DEFAULT_SQL_DIALECT = 'PostgreSQL'
+
+SQL_DIALECTS = {
+    'PostgreSQL': {
+        'name': 'postgresql',
+        'int_type': 'INTEGER',
+        'numeric_type': 'NUMERIC',
+        'float_type': 'NUMERIC',
+        'boolean_type': 'BOOLEAN',
+        'text_type': 'TEXT',
+        'date_parse': "TO_DATE({expr}, '{format}')",
+        'datetime_parse': "TO_TIMESTAMP({expr}, '{format}')",
+        'try_cast': 'CAST',
+        'json_func': 'to_json'
+    },
+
+    'MySQL': {
+        'name': 'mysql',
+        'int_type': 'INT',
+        'numeric_type': 'DECIMAL',
+        'float_type': 'DECIMAL',
+        'boolean_type': 'BOOLEAN',
+        'text_type': 'TEXT',
+        'date_parse': "STR_TO_DATE({expr}, '{format}')",
+        'datetime_parse': "STR_TO_DATE({expr}, '{format}')",
+        'try_cast': 'CAST',
+        'json_func': 'JSON_OBJECT'
+    },
+
+    'Snowflake': {
+        'name': 'snowflake',
+        'int_type': 'INT',
+        'numeric_type': 'NUMBER',
+        'float_type': 'FLOAT',
+        'boolean_type': 'BOOLEAN',
+        'text_type': 'VARCHAR',
+        'date_parse': "TRY_TO_DATE({expr}, '{format}')",
+        'datetime_parse': "TRY_TO_TIMESTAMP({expr}, '{format}')",
+        'try_cast': 'TRY_CAST',
+        'json_func': 'TO_JSON'
+    },
+
+    'BigQuery': {
+        'name': 'bigquery',
+        'int_type': 'INT64',
+        'numeric_type': 'NUMERIC',
+        'float_type': 'FLOAT64',
+        'boolean_type': 'BOOL',
+        'text_type': 'STRING',
+        'date_parse': "PARSE_DATE('{format}', {expr})",
+        'datetime_parse': "PARSE_TIMESTAMP('{format}', {expr})",
+        'try_cast': 'SAFE_CAST',
+        'json_func': 'TO_JSON_STRING'
+    }
+}
+
 # Configuración de validación de fechas
 ALLOWED_DATE_FORMATS = [
     '%Y-%m-%d',           # ISO 8601: 2024-01-15

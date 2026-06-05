@@ -10,6 +10,35 @@ from utils.patterns import ValidationPatterns, get_column_type_hints
 from config import NULL_THRESHOLD_PERCENT, UNIQUE_VALUES_THRESHOLD, CARDINALITY_WARNING_PERCENT
 
 
+class MemoryUsage(float):
+    """Valor compatible: se formatea como float y también expone detalles por llave."""
+
+    def __new__(cls, total_mb, by_column=None):
+        obj = float.__new__(cls, total_mb)
+        obj.total_mb = total_mb
+        obj.by_column = by_column or {}
+        return obj
+
+    def __getitem__(self, key):
+        if key == 'total_mb':
+            return self.total_mb
+        if key == 'by_column':
+            return self.by_column
+        raise KeyError(key)
+
+    def __contains__(self, key):
+        return key in {'total_mb', 'by_column'}
+
+    def keys(self):
+        return ['total_mb', 'by_column']
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+
 class DataProfiler:
     """Clase para realizar el perfilado completo de un DataFrame."""
     
@@ -37,20 +66,34 @@ class DataProfiler:
             'duplicates': self._analyze_duplicates(),
             'column_profiles': self._profile_columns(),
             'data_type_issues': self._detect_type_issues(),
-            'memory_usage': DataFrameHelper.get_memory_usage(self.df),
+            'memory_usage': self._get_memory_usage(),
         }
         
         return self.profile
     
     def _get_general_info(self):
         """Obtiene información general del DataFrame."""
+        memory_usage_mb = DataFrameHelper.get_memory_usage(self.df)
         return {
             'total_rows': len(self.df),
             'total_columns': len(self.df.columns),
             'total_cells': len(self.df) * len(self.df.columns),
             'column_names': list(self.df.columns),
-            'data_types': self.df.dtypes.astype(str).to_dict()
+            'data_types': self.df.dtypes.astype(str).to_dict(),
+            # Alias de compatibilidad para pruebas/documentación previa
+            'memory_usage_mb': memory_usage_mb
         }
+
+
+    def _get_memory_usage(self):
+        """Obtiene uso de memoria total y por columna con compatibilidad float/dict."""
+        total_mb = DataFrameHelper.get_memory_usage(self.df)
+        by_column = {
+            col: float(self.df[col].memory_usage(deep=True) / (1024 ** 2))
+            for col in self.df.columns
+        }
+        return MemoryUsage(total_mb, by_column)
+
     
     def _analyze_nulls(self):
         """Analiza valores nulos en el DataFrame."""
@@ -74,25 +117,43 @@ class DataProfiler:
                     'status': 'CRÍTICO' if null_percent >= 80 else 'GRAVE'
                 }
         
+        total_null_cells = int(null_info['total_null_cells'])
+        null_percent_overall = float(
+            (null_info['total_null_cells'] / null_info['total_cells'] * 100)
+            if null_info['total_cells'] > 0 else 0
+        )
+
+        by_column = {
+            col: {
+                'count': int(count),
+                'percent': float(null_info['by_column_percent'][col]),
+                'utilization_percent': column_utilization.get(col, 0)
+            }
+            for col, count in null_info['by_column'].items()
+            if count > 0
+        }
+
+        columns_with_nulls = {
+            col: {
+                'null_count': info['count'],
+                'null_percent': info['percent'],
+                'utilization_percent': info['utilization_percent']
+            }
+            for col, info in by_column.items()
+        }
+
         return {
-            'total_null_cells': int(null_info['total_null_cells']),
-            'null_percent_overall': float(
-                (null_info['total_null_cells'] / null_info['total_cells'] * 100)
-                if null_info['total_cells'] > 0 else 0
-            ),
+            'total_null_cells': total_null_cells,
+            'null_percent_overall': null_percent_overall,
             'complete_rows': complete_rows_info['complete_rows'],
             'complete_rows_percent': complete_rows_info['complete_rows_percent'],
-            'by_column': {
-                col: {
-                    'count': int(count),
-                    'percent': float(null_info['by_column_percent'][col]),
-                    'utilization_percent': column_utilization.get(col, 0)
-                }
-                for col, count in null_info['by_column'].items()
-                if count > 0
-            },
+            'by_column': by_column,
             'column_utilization': column_utilization,
-            'problematic_columns': problematic_columns
+            'problematic_columns': problematic_columns,
+            # Alias de compatibilidad para pruebas/documentación previa
+            'total_null_count': total_null_cells,
+            'total_null_percent': null_percent_overall,
+            'columns_with_nulls': columns_with_nulls
         }
     
     def _analyze_empty_strings(self):
@@ -117,11 +178,25 @@ class DataProfiler:
         else:
             examples = []
         
+        duplicate_columns = []
+        columns = list(self.df.columns)
+        for i, col_a in enumerate(columns):
+            for col_b in columns[i + 1:]:
+                try:
+                    if self.df[col_a].equals(self.df[col_b]):
+                        duplicate_columns.append({'column_a': col_a, 'column_b': col_b})
+                except Exception:
+                    continue
+
+        total_duplicates = int(dup_info['total_duplicates'])
         return {
-            'total_duplicates': int(dup_info['total_duplicates']),
+            'total_duplicates': total_duplicates,
             'duplicates_percent': float(dup_info['duplicates_percent']),
             'by_column': dup_info['by_column'],
-            'examples': examples
+            'examples': examples,
+            # Alias/extra para pruebas/documentación previa
+            'total_duplicate_rows': total_duplicates,
+            'duplicate_columns': duplicate_columns
         }
     
     def _profile_columns(self):
@@ -129,8 +204,11 @@ class DataProfiler:
         column_profiles = {}
         
         for col in self.df.columns:
-            column_profiles[col] = {
+            stats = self._get_column_stats(col)
+            cardinality_ratio = float(StringHelper.get_cardinality_ratio(self.df[col]))
+            col_profile = {
                 'dtype': str(self.df[col].dtype),
+                'data_type': str(self.df[col].dtype),
                 'type_hint': get_column_type_hints(col),
                 'non_null_count': int(self.df[col].notna().sum()),
                 'null_count': int(self.df[col].isna().sum()),
@@ -139,11 +217,13 @@ class DataProfiler:
                     if len(self.df) > 0 else 0
                 ),
                 'unique_count': int(self.df[col].nunique()),
-                'cardinality_ratio': float(
-                    StringHelper.get_cardinality_ratio(self.df[col])
-                ),
-                'stats': self._get_column_stats(col)
+                'unique_percent': cardinality_ratio * 100,
+                'cardinality_ratio': cardinality_ratio,
+                'stats': stats
             }
+            # Alias top-level para estadísticas numéricas usadas por pruebas previas
+            col_profile.update({k: v for k, v in stats.items() if k in ['min', 'max', 'mean', 'median', 'std']})
+            column_profiles[col] = col_profile
         
         return column_profiles
     

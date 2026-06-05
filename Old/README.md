@@ -1,8 +1,8 @@
-# 📊 Analizador de Calidad de Datos CSV - v3.2
+# 📊 Analizador de Calidad de Datos CSV - v2.0
 
 ![Tests](https://img.shields.io/badge/tests-85+-green) ![Python](https://img.shields.io/badge/python-3.8+-blue) ![Status](https://img.shields.io/badge/status-stable-green)
 
-Herramienta completa para analizar archivos CSV, identificar problemas de calidad de datos, y **generar código listo para producción** que incluye limpieza, validación y carga a BD. A partir de la versión **3.x**, la generación de código SQL utiliza un motor de plantillas Jinja2 con soporte multidialecto y tipado inteligente.
+Herramienta completa para analizar archivos CSV, identificar problemas de calidad de datos, y **generar código listo para producción** que incluye limpieza, validación y carga a BD.
 
 ## 🎯 Características Principales
 
@@ -20,16 +20,11 @@ Herramienta completa para analizar archivos CSV, identificar problemas de calida
 - ✅ **Filtros SQL listos para usar**
 
 ### 🗄️ ✨ Generación de Código SQL/Python (NUEVO)
-**Novedades de la versión 3.x:**
-
-- ✅ **Motor Jinja2 con soporte multidialecto** (PostgreSQL, MySQL, Snowflake, BigQuery). El script se ajusta automáticamente al dialecto elegido.
-- ✅ **Inferencia de tipos inteligente**: se calcula precisión y escala de números para usar `NUMERIC/DECIMAL(precision,scale)` en lugar de `VARCHAR` por defecto.
-- ✅ **Tabla de cuarentena**: los registros con errores de tipo o formato se insertan en una tabla secundaria con información detallada (`columna_erronea`, `categoria_error`, `valor_original`).
-- ✅ **Selector de dialecto en la interfaz**: elige el motor SQL deseado antes de generar el script.
-- ✅ Código Python de limpieza con pandas.
-- ✅ Estandarización automática de fechas y monedas.
-- ✅ Eliminación de duplicados y nulos.
-- ✅ Queries de validación final.
+- ✅ Script SQL completo (CREATE TABLE + INSERT)
+- ✅ Código Python de limpieza con pandas
+- ✅ Estandarización automática de fechas, monedas
+- ✅ Eliminación de duplicados y nulos
+- ✅ Queries de validación final
 
 ### ⚙️ ✨ Configuración Personalizada (NUEVO)
 - ✅ Carga configuración YAML/JSON propia
@@ -37,7 +32,7 @@ Herramienta completa para analizar archivos CSV, identificar problemas de calida
 - ✅ Reglas de negocio específicas
 
 ### 📥 ✨ Reportes Mejorados (NUEVO)
-- ✅ Excel con **15 hojas** de análisis completo
+- ✅ Excel con **14 hojas** de análisis completo
 - ✅ HTML con información interactiva
 - ✅ Incluye código SQL/Python generado
 - ✅ Configuración YAML exportada
@@ -76,7 +71,7 @@ Accede a `http://localhost:8501` en tu navegador.
 | 3️⃣ | ✅ Validaciones | Email, teléfono, fecha, URL, dominio |
 | 4️⃣ | 💡 Recomendaciones | Limpieza, reglas SQL, normalización, **filtros SQL** |
 | 5️⃣ | 📋 Datos Problemáticos | Ejemplos de filas con problemas |
-| 6️⃣ | 💾 Código SQL/Python | **Script SQL + Python + YAML generado** ✨ *(ahora con selector de dialecto)* |
+| 6️⃣ | 💾 Código SQL/Python | **Script SQL + Python + YAML generado** ✨ |
 | 7️⃣ | ⚙️ Configuración | **Carga tu YAML/JSON personalizado** ✨ |
 | 8️⃣ | 📥 Descargar Reporte | Excel (14 hojas) + HTML |
 
@@ -110,8 +105,6 @@ FROM cleaned_data
 WHERE ROW_NUMBER() OVER (PARTITION BY id ORDER BY 1) = 1;
 ```
 
-**Desde la versión 3.x el script SQL se genera mediante plantillas Jinja2 y soporta múltiples dialectos**. A modo ilustrativo se muestra un ejemplo simplificado para PostgreSQL; el script final adaptará los tipos y funciones de cast según el motor seleccionado.
-
 ### Código Python Generado Automáticamente
 ```python
 def cleanup_data(df):
@@ -133,7 +126,7 @@ def cleanup_data(df):
 
 ---
 
-## 📊 Contenido del Reporte Excel (15 Hojas)
+## 📊 Contenido del Reporte Excel (14 Hojas)
 
 | # | Hoja | Contenido |
 |---|------|----------|
@@ -151,7 +144,6 @@ def cleanup_data(df):
 | 12 | **CODIGO_SQL** | ✨ **Script SQL completo** |
 | 13 | **CODIGO_PYTHON** | ✨ **Script Python** |
 | 14 | **CONFIG_YAML** | ✨ **Configuración YAML** |
-| 15 | **CUARENTENA** | ✨ **Registros rechazados y categorías de error** |
 
 ---
 
@@ -272,7 +264,7 @@ Tamaño          Método
 
 ## 📝 Versión y Licencia
 
-**Versión:** 3.2.0  
+**Versión:** 2.0.0  
 **Última actualización:** Junio 2026  
 **Licencia:** MIT
 

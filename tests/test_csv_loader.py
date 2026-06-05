@@ -5,6 +5,7 @@ Pruebas para el módulo csv_loader.py
 import pytest
 import pandas as pd
 from modules.csv_loader import CSVLoader, CSVLoadError
+from config import MAX_FILE_SIZE_MB
 
 
 class TestCSVLoaderDelimiterDetection:
@@ -159,23 +160,22 @@ class TestCSVLoaderFileValidation:
     
     def test_validate_file_size_valid(self):
         """Verifica que permite archivos dentro del límite."""
-        # 1MB < 50MB (límite)
+        # 1MB debe estar dentro del límite configurado
         CSVLoader.validate_file(1024 * 1024)
     
     def test_validate_file_size_too_large(self):
         """Verifica que rechaza archivos muy grandes."""
-        # 100MB > 50MB (límite)
         with pytest.raises(CSVLoadError):
-            CSVLoader.validate_file(100 * 1024 * 1024)
+            CSVLoader.validate_file((MAX_FILE_SIZE_MB + 1) * 1024 * 1024)
     
     def test_validate_file_size_boundary(self):
         """Verifica límite exacto de tamaño."""
-        # 50MB exacto debería pasar
-        CSVLoader.validate_file(50 * 1024 * 1024)
+        # El límite exacto configurado debe pasar
+        CSVLoader.validate_file(MAX_FILE_SIZE_MB * 1024 * 1024)
         
-        # 50.1MB debería fallar
+        # Cualquier tamaño mayor al límite configurado debe fallar
         with pytest.raises(CSVLoadError):
-            CSVLoader.validate_file(int(50.1 * 1024 * 1024))
+            CSVLoader.validate_file(int((MAX_FILE_SIZE_MB + 0.1) * 1024 * 1024))
 
 
 class TestCSVLoaderChunkedLoading:

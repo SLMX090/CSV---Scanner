@@ -5,6 +5,8 @@ email-validator==2.1.0
 python-dateutil==2.8.2
 numpy>=1.26.0
 PyYAML>=6.0.1
+# Nuevo
+Jinja2>=3.1.0
 
 # Herramientas de testing
 pytest==7.4.3

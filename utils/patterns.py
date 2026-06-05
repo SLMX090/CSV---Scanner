@@ -4,6 +4,7 @@ Contiene expresiones regulares y patrones para validar diferentes tipos de datos
 """
 
 import re
+from datetime import datetime
 import pandas as pd
 from config import (
     EMAIL_PATTERN,
@@ -48,7 +49,23 @@ class ValidationPatterns:
         """Valida si una cadena es un email válido."""
         if not isinstance(value, str):
             return False
-        return ValidationPatterns.EMAIL_REGEX.match(str(value).strip()) is not None
+
+        email = str(value).strip()
+        if ValidationPatterns.EMAIL_REGEX.match(email) is None:
+            return False
+
+        try:
+            local, domain = email.rsplit('@', 1)
+        except ValueError:
+            return False
+
+        # Reglas prácticas adicionales que la regex básica no cubre.
+        if '..' in local or local.startswith('.') or local.endswith('.'):
+            return False
+        if '..' in domain or domain.startswith('.') or domain.endswith('.'):
+            return False
+
+        return True
     
     @staticmethod
     def is_valid_phone(value):
@@ -68,13 +85,27 @@ class ValidationPatterns:
     
     @staticmethod
     def is_valid_date_format(value):
-        """Verifica si una cadena tiene formato de fecha reconocido."""
+        """Verifica si una cadena tiene formato de fecha reconocido y fecha real válida."""
         if not isinstance(value, str):
             return False
+
         value_str = str(value).strip()
-        for pattern in ValidationPatterns.DATE_PATTERNS:
-            if re.match(pattern, value_str):
+        formats = [
+            '%Y-%m-%d',
+            '%d/%m/%Y',
+            '%m/%d/%Y',
+            '%d-%m-%Y',
+            '%m-%d-%Y',
+            '%Y/%m/%d',
+        ]
+
+        for fmt in formats:
+            try:
+                datetime.strptime(value_str, fmt)
                 return True
+            except ValueError:
+                continue
+
         return False
     
     @staticmethod

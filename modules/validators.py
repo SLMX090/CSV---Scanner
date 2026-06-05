@@ -263,6 +263,22 @@ class DataValidator:
                     continue
                 
                 value_str = str(value[1]).strip()
+
+                # Detecta ambigüedad potencial aunque el formato sea válido.
+                if '-' in value_str or '/' in value_str:
+                    parts = re.split('[/-]', value_str)
+                    if len(parts) >= 2:
+                        try:
+                            first = int(parts[0])
+                            second = int(parts[1])
+                            if first <= 12 and second <= 12:
+                                ambiguous_dates.append({
+                                    'row': idx + 1,
+                                    'value': value_str,
+                                    'issue': 'Ambiguo: podría ser DD/MM o MM/DD'
+                                })
+                        except ValueError:
+                            pass
                 
                 # Intenta parsear la fecha
                 try:
