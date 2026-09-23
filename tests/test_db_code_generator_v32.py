@@ -1,4 +1,5 @@
 import pandas as pd
+import ast
 
 from modules.data_profiler import DataProfiler
 from modules.validators import DataValidator
@@ -134,3 +135,91 @@ def test_generated_script_contains_quarantine_error_categories():
     assert "valor_original" in sql
     assert "fila_completa_json" in sql
     assert "TIPO_DATO_NUMERICO" in sql or "FORMATO_FECHA_INVALIDO" in sql
+
+
+def test_generated_python_is_valid_and_uses_problematic_columns():
+    df = pd.DataFrame({
+        "customer's name": [" Ana ", "Ana", None, None],
+        "monto": ["10.50", "10.50", "20.00", "30.00"],
+        "email": ["ANA@TEST.COM", "ANA@TEST.COM", "luis@test.com", "x@test.com"],
+    })
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+
+    generator = DatabaseCodeGenerator(df, profile, validation_results)
+    python_code = generator.generate_python_cleanup_code()
+
+    ast.parse(python_code)
+    assert "dropna(subset=[\"customer's name\"])" in python_code
+
+    namespace = {}
+    exec(python_code, namespace)
+    cleaned = namespace["cleanup_data"](df)
+
+    assert list(cleaned["customer's name"]) == ["Ana", "Ana"]
+    assert cleaned["monto"].tolist() == [10.5, 10.5]
+    assert cleaned["email"].tolist() == ["ana@test.com", "ana@test.com"]
+
+
+def test_generated_sql_escapes_column_names_in_quarantine():
+    df = pd.DataFrame({"customer's name": ["Ana", None]})
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+
+    sql = DatabaseCodeGenerator(df, profile, validation_results).generate_complete_script()
+
+    assert "'customer''s name'" in sql
+
+
+def test_generated_python_normalizes_currency_and_named_months():
+    df = pd.DataFrame({
+        "importe": ["$1,234.56", "€ 1.234,56", "(£2,000.00)"],
+        "fecha_pago": ["15 enero 2024", "January 16, 2024", "17 february 2024"],
+    })
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+
+    generator = DatabaseCodeGenerator(df, profile, validation_results)
+    python_code = generator.generate_python_cleanup_code()
+    namespace = {}
+    exec(python_code, namespace)
+    cleaned = namespace["cleanup_data"](df)
+
+    assert cleaned["importe"].tolist() == [1234.56, 1234.56, -2000.0]
+    assert cleaned["fecha_pago"].dt.strftime("%Y-%m-%d").tolist() == [
+        "2024-01-15",
+        "2024-01-16",
+        "2024-02-17",
+    ]
+
+
+def test_generated_sql_contains_extended_numeric_normalization():
+    df = pd.DataFrame({
+        "importe": ["$1,234.56", "(€2.000,00)"],
+        "fecha_pago": ["15 enero 2024", "January 16, 2024"],
+    })
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+
+    sql = DatabaseCodeGenerator(df, profile, validation_results).generate_complete_script()
+
+    assert "REGEXP_REPLACE" in sql
+    assert "REPLACE(" in sql
+    assert "'enero', 'jan'" in sql
+
+
+def test_generated_code_normalizes_boolean_values():
+    df = pd.DataFrame({"activo": ["Sí", "verdadero", "N", "0"]})
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+
+    generator = DatabaseCodeGenerator(df, profile, validation_results)
+    python_code = generator.generate_python_cleanup_code()
+    namespace = {}
+    exec(python_code, namespace)
+    cleaned = namespace["cleanup_data"](df)
+    sql = generator.generate_complete_script()
+
+    assert cleaned["activo"].tolist() == [True, True, False, False]
+    assert "CASE WHEN LOWER" in sql
+    assert "'sí'" in sql

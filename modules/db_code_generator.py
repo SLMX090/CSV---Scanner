@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -209,7 +210,66 @@ class DatabaseCodeGenerator:
             "# Código Python para limpiar datos antes de insertar en BD",
             "import pandas as pd",
             "import numpy as np",
+            "import re",
+            "import unicodedata",
             "from datetime import datetime",
+            "",
+            "_MONTHS = {",
+            "    'enero': 1, 'ene': 1, 'january': 1, 'jan': 1,",
+            "    'febrero': 2, 'feb': 2, 'february': 2,",
+            "    'marzo': 3, 'mar': 3, 'march': 3,",
+            "    'abril': 4, 'abr': 4, 'april': 4,",
+            "    'mayo': 5, 'may': 5,",
+            "    'junio': 6, 'jun': 6, 'june': 6,",
+            "    'julio': 7, 'jul': 7, 'july': 7,",
+            "    'agosto': 8, 'ago': 8, 'august': 8, 'aug': 8,",
+            "    'septiembre': 9, 'setiembre': 9, 'sep': 9, 'september': 9, 'sept': 9,",
+            "    'octubre': 10, 'oct': 10, 'october': 10,",
+            "    'noviembre': 11, 'nov': 11, 'november': 11,",
+            "    'diciembre': 12, 'dic': 12, 'december': 12, 'dec': 12,",
+            "}",
+            "",
+            "def _normalize_numeric_value(value):",
+            "    if pd.isna(value):",
+            "        return value",
+            "    text = str(value).strip()",
+            "    negative = text.startswith('(') and text.endswith(')')",
+            "    text = re.sub(r'[^0-9,.-]', '', text)",
+            "    if ',' in text and '.' in text:",
+            "        if text.rfind(',') > text.rfind('.'):",
+            "            text = text.replace('.', '').replace(',', '.')",
+            "        else:",
+            "            text = text.replace(',', '')",
+            "    elif ',' in text:",
+            "        last_group = text.rsplit(',', 1)[1]",
+            "        text = text.replace(',', '.') if len(last_group) in (1, 2) else text.replace(',', '')",
+            "    if negative and text and not text.startswith('-'):",
+            "        text = '-' + text",
+            "    return text",
+            "",
+            "def _normalize_date_value(value):",
+            "    if pd.isna(value):",
+            "        return value",
+            "    text = unicodedata.normalize('NFKD', str(value).strip()).encode('ascii', 'ignore').decode()",
+            "    text = re.sub(r'\\s+de\\s+', ' ', text, flags=re.IGNORECASE)",
+            "    month_pattern = '|'.join(sorted(_MONTHS, key=len, reverse=True))",
+            "    match = re.fullmatch(rf'(\\d{{1,2}})\\s+({month_pattern})\\s+(\\d{{4}})', text, flags=re.IGNORECASE)",
+            "    if match:",
+            "        return f'{match.group(1)}/{_MONTHS[match.group(2).lower()]}/{match.group(3)}'",
+            "    match = re.fullmatch(rf'({month_pattern})\\s+(\\d{{1,2}}),?\\s+(\\d{{4}})', text, flags=re.IGNORECASE)",
+            "    if match:",
+            "        return f'{match.group(2)}/{_MONTHS[match.group(1).lower()]}/{match.group(3)}'",
+            "    return text",
+            "",
+            "def _normalize_boolean_value(value):",
+            "    if pd.isna(value):",
+            "        return pd.NA",
+            "    normalized = unicodedata.normalize('NFKD', str(value).strip()).encode('ascii', 'ignore').decode().lower()",
+            "    if normalized in {'true', '1', 'yes', 'si', 'verdadero', 'y', 't'}:",
+            "        return True",
+            "    if normalized in {'false', '0', 'no', 'falso', 'n', 'f'}:",
+            "        return False",
+            "    return pd.NA",
             "",
             "",
             "def cleanup_data(df):",
@@ -225,22 +285,31 @@ class DatabaseCodeGenerator:
             script.append("")
 
         null_by_column = self.profile.get("null_analysis", {}).get("by_column", {})
+        null_analysis = self.profile.get("null_analysis", {})
+        problematic_columns = null_analysis.get("problematic_columns", {})
         critical_cols = [
             col
-            for col, info in null_by_column.items()
-            if info.get("percent", 0) == 0
+            for col in self._get_column_names()
+            if col in problematic_columns
+            and col in null_by_column
+            and null_by_column[col].get("utilization_percent", 100) < 100
         ]
         if critical_cols:
             script.append("    # 2. Eliminar filas con nulos en columnas críticas")
-            script.append(f"    df_clean = df_clean.dropna(subset={critical_cols})")
+            script.append(
+                f"    df_clean = df_clean.dropna(subset={self._python_literal(critical_cols)})"
+            )
             script.append("")
 
         script.append("    # 3. Limpiar espacios en blanco")
         for col in self._get_column_names()[:20]:
+            column_literal = self._python_literal(col)
             script.append(
-                f"    if '{col}' in df_clean.columns and df_clean['{col}'].dtype == 'object':"
+                f"    if {column_literal} in df_clean.columns and df_clean[{column_literal}].dtype == 'object':"
             )
-            script.append(f"        df_clean['{col}'] = df_clean['{col}'].str.strip()")
+            script.append(
+                f"        df_clean[{column_literal}] = df_clean[{column_literal}].str.strip()"
+            )
 
         script.extend([
             "",
@@ -249,32 +318,42 @@ class DatabaseCodeGenerator:
 
         for col, profile_col in list(self.profile.get("column_profiles", {}).items())[:20]:
             semantic_type = self._infer_semantic_type(col, profile_col)
+            column_literal = self._python_literal(col)
             if semantic_type == "Integer":
                 script.append(
-                    f"    if '{col}' in df_clean.columns:"
+                    f"    if {column_literal} in df_clean.columns:"
                 )
                 script.append(
-                    f"        df_clean['{col}'] = pd.to_numeric(df_clean['{col}'], errors='coerce').astype('Int64')"
+                        f"        df_clean[{column_literal}] = pd.to_numeric(df_clean[{column_literal}].map(_normalize_numeric_value), errors='coerce').astype('Int64')"
                 )
             elif semantic_type == "Float":
                 script.append(
-                    f"    if '{col}' in df_clean.columns:"
+                    f"    if {column_literal} in df_clean.columns:"
                 )
                 script.append(
-                    f"        df_clean['{col}'] = pd.to_numeric(df_clean['{col}'], errors='coerce')"
+                    f"        df_clean[{column_literal}] = pd.to_numeric(df_clean[{column_literal}].map(_normalize_numeric_value), errors='coerce')"
                 )
             elif semantic_type in ("Date", "DateTime"):
                 script.append(
-                    f"    if '{col}' in df_clean.columns:"
+                    f"    if {column_literal} in df_clean.columns:"
                 )
                 script.append(
-                    f"        df_clean['{col}'] = pd.to_datetime(df_clean['{col}'], errors='coerce')"
+                    f"        df_clean[{column_literal}] = pd.to_datetime(df_clean[{column_literal}].map(_normalize_date_value), errors='coerce', dayfirst=True, format='mixed')"
+                )
+            elif semantic_type == "Boolean":
+                script.append(
+                    f"    if {column_literal} in df_clean.columns:"
+                )
+                script.append(
+                    f"        df_clean[{column_literal}] = df_clean[{column_literal}].map(_normalize_boolean_value).astype('boolean')"
                 )
             elif semantic_type == "Email":
                 script.append(
-                    f"    if '{col}' in df_clean.columns and df_clean['{col}'].dtype == 'object':"
+                    f"    if {column_literal} in df_clean.columns and df_clean[{column_literal}].dtype == 'object':"
                 )
-                script.append(f"        df_clean['{col}'] = df_clean['{col}'].str.lower()")
+                script.append(
+                    f"        df_clean[{column_literal}] = df_clean[{column_literal}].str.lower()"
+                )
 
         script.extend([
             "",
@@ -287,6 +366,88 @@ class DatabaseCodeGenerator:
         ])
 
         return "\n".join(script)
+
+    @staticmethod
+    def _normalize_numeric_value(value: Any) -> Any:
+        """Normaliza moneda, separadores locales y negativos contables."""
+        if value is None or pd.isna(value):
+            return value
+
+        text = str(value).strip()
+        negative = text.startswith("(") and text.endswith(")")
+        text = re.sub(r"[^0-9,.-]", "", text)
+
+        if "," in text and "." in text:
+            if text.rfind(",") > text.rfind("."):
+                text = text.replace(".", "").replace(",", ".")
+            else:
+                text = text.replace(",", "")
+        elif "," in text:
+            last_group = text.rsplit(",", 1)[1]
+            text = text.replace(",", ".") if len(last_group) in (1, 2) else text.replace(",", "")
+
+        if negative and text and not text.startswith("-"):
+            text = "-" + text
+        return text
+
+    @staticmethod
+    def _normalize_date_value(value: Any) -> Any:
+        """Convierte meses escritos en español o inglés a formato día/mes/año."""
+        if value is None or pd.isna(value):
+            return value
+
+        text = unicodedata.normalize("NFKD", str(value).strip()).encode("ascii", "ignore").decode()
+        text = re.sub(r"\s+de\s+", " ", text, flags=re.IGNORECASE)
+        months = {
+            "enero": 1, "ene": 1, "january": 1, "jan": 1,
+            "febrero": 2, "feb": 2, "february": 2,
+            "marzo": 3, "mar": 3, "march": 3,
+            "abril": 4, "abr": 4, "april": 4,
+            "mayo": 5, "may": 5,
+            "junio": 6, "jun": 6, "june": 6,
+            "julio": 7, "jul": 7, "july": 7,
+            "agosto": 8, "ago": 8, "august": 8, "aug": 8,
+            "septiembre": 9, "setiembre": 9, "sep": 9,
+            "september": 9, "sept": 9,
+            "octubre": 10, "oct": 10, "october": 10,
+            "noviembre": 11, "nov": 11, "november": 11,
+            "diciembre": 12, "dic": 12, "december": 12, "dec": 12,
+        }
+        month_pattern = "|".join(sorted(months, key=len, reverse=True))
+        match = re.fullmatch(
+            rf"(\d{{1,2}})\s+({month_pattern})\s+(\d{{4}})",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            return f"{match.group(1)}/{months[match.group(2).lower()]}/{match.group(3)}"
+
+        match = re.fullmatch(
+            rf"({month_pattern})\s+(\d{{1,2}}),?\s+(\d{{4}})",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            return f"{match.group(2)}/{months[match.group(1).lower()]}/{match.group(3)}"
+        return text
+
+    @staticmethod
+    def _normalize_boolean_value(value: Any) -> Any:
+        """Normaliza booleanos frecuentes en español e inglés."""
+        if value is None or pd.isna(value):
+            return pd.NA
+
+        normalized = unicodedata.normalize("NFKD", str(value).strip()).encode("ascii", "ignore").decode().lower()
+        if normalized in {"true", "1", "yes", "si", "verdadero", "y", "t"}:
+            return True
+        if normalized in {"false", "0", "no", "falso", "n", "f"}:
+            return False
+        return pd.NA
+
+    @staticmethod
+    def _python_literal(value: Any) -> str:
+        """Devuelve un literal Python válido para nombres de columnas y listas."""
+        return repr(value)
 
     def generate_config_yaml(self):
         """
@@ -467,7 +628,7 @@ INSERT INTO {{ quarantine_table }} (
 {%- for col in columns %}
 SELECT
     CURRENT_TIMESTAMP,
-    '{{ col.name }}',
+    {{ col.name_literal }},
     '{{ col.error_category }}',
     {{ col.raw_text_alias }},
     fila_completa_json_raw
@@ -583,6 +744,7 @@ WITH cleaned_data AS (
 
             columns_meta.append({
                 "name": col,
+                "name_literal": self._quote_sql_literal(col),
                 "safe_alias": base_alias,
                 "identifier": self._quote_identifier(col, dialect_name),
                 "source_expr": source_expr,
@@ -636,27 +798,33 @@ WITH cleaned_data AS (
             # Expresión regular universal para validar estructura genérica de fecha:
             # Soporta componentes de 1 a 4 dígitos separados de forma indistinta por '-' o '/'
             # Opcionalmente acepta componentes de hora al final (ej: 2026-06-05, 05/06/2026, 2026-06-05 01:20:00)
-            date_regex = r"^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}( \d{1,2}:\d{1,2}:\d{1,2})?$"
+            date_regex = (
+                r"^(\d{1,4}[-/]\d{1,2}[-/]\d{1,4}"
+                r"( \d{1,2}:\d{1,2}:\d{1,2})?|"
+                r"[a-z]{3,9} \d{1,2},? \d{4}|"
+                r"\d{1,2} [a-z]{3,9} \d{4})$"
+            )
+            normalized_date_expr = self._normalize_date_expr(trimmed_expr)
             
             # Construir la validación sintáctica por Regex nativa según cada Dialecto SQL
             if dialect_name == "PostgreSQL":
-                regex_expr = f"({trimmed_expr} ~ '{date_regex}')"
+                regex_expr = f"({normalized_date_expr} ~* '{date_regex}')"
             elif dialect_name == "MySQL":
                 escaped_regex = date_regex.replace("\\", "\\\\")
-                regex_expr = f"({trimmed_expr} REGEXP '{escaped_regex}')"
+                regex_expr = f"({normalized_date_expr} REGEXP '{escaped_regex}')"
             elif dialect_name == "Snowflake":
                 escaped_regex = date_regex.replace("\\", "\\\\")
-                regex_expr = f"REGEXP_LIKE({trimmed_expr}, '{escaped_regex}')"
+                regex_expr = f"REGEXP_LIKE({normalized_date_expr}, '{escaped_regex}', 'i')"
             elif dialect_name == "BigQuery":
                 escaped_regex = date_regex.replace("\\", "\\\\")
-                regex_expr = f"REGEXP_CONTAINS({trimmed_expr}, r'{escaped_regex}')"
+                regex_expr = f"REGEXP_CONTAINS({normalized_date_expr}, r'(?i){escaped_regex}')"
             else:
                 regex_expr = "TRUE"
 
             # En lugar de usar _date_parse_expr (estricto), delegamos al casting seguro nativo 
             # de la clase (_safe_cast_expr) que ya está mapeado correctamente para cada dialecto.
             target_type = "TIMESTAMP" if semantic_type == "DateTime" else "DATE"
-            cast_expr = self._safe_cast_expr(trimmed_expr, target_type, dialect_name)
+            cast_expr = self._safe_cast_expr(normalized_date_expr, target_type, dialect_name)
             
             # Si el campo es vacío -> NULL. Si cumple el formato genérico -> Ejecuta CAST seguro. Caso contrario -> NULL (Error).
             clean_expr = f"CASE WHEN {blank_expr} THEN NULL WHEN {regex_expr} THEN {cast_expr} ELSE NULL END"
@@ -664,7 +832,8 @@ WITH cleaned_data AS (
             return clean_expr, flag_expr, "FORMATO_FECHA_INVALIDO"
 
         if semantic_type == "Boolean":
-            cast_expr = self._safe_cast_expr(trimmed_expr, sql_type, dialect_name)
+            normalized = self._normalize_boolean_expr(trimmed_expr, dialect_name)
+            cast_expr = self._safe_cast_expr(normalized, sql_type, dialect_name)
             valid_expr = self._boolean_valid_expr(trimmed_expr, dialect_name)
             clean_expr = f"CASE WHEN {blank_expr} THEN NULL WHEN {valid_expr} THEN {cast_expr} ELSE NULL END"
             flag_expr = f"({blank_expr} OR {valid_expr})"
@@ -718,7 +887,7 @@ WITH cleaned_data AS (
             return "Text"
 
         numeric_series = pd.to_numeric(
-            sample.str.replace(",", "", regex=False),
+            sample.map(self._normalize_numeric_value),
             errors="coerce",
         )
         numeric_ratio = numeric_series.notna().mean()
@@ -730,8 +899,17 @@ WITH cleaned_data AS (
             is_integer = (numeric_non_null % 1 == 0).all()
             return "Integer" if is_integer else "Float"
 
+        boolean_values = sample.map(self._normalize_boolean_value)
+        if boolean_values.notna().mean() >= 0.90:
+            return "Boolean"
+
         #date_ratio = pd.to_datetime(sample, errors="coerce").notna().mean()
-        date_ratio = pd.to_datetime(sample, errors="coerce", format="mixed").notna().mean()
+        date_ratio = pd.to_datetime(
+            sample.map(self._normalize_date_value),
+            errors="coerce",
+            dayfirst=True,
+            format="mixed",
+        ).notna().mean()
         if date_ratio >= 0.90:
             return "Date"
 
@@ -772,7 +950,7 @@ WITH cleaned_data AS (
         Calcula precisión y escala para columnas decimales.
         """
         numeric = pd.to_numeric(
-            series.astype(str).str.replace(",", "", regex=False),
+            series.map(self._normalize_numeric_value),
             errors="coerce",
         ).dropna()
 
@@ -910,7 +1088,21 @@ WITH cleaned_data AS (
         Genera condición SQL para validar booleanos textuales.
         """
         lower_expr = self._lower_expr(expr, dialect_name)
-        return f"({lower_expr} IN ('true', 'false', '1', '0', 'yes', 'no', 'si', 'no'))"
+        return (
+            f"({lower_expr} IN "
+            "('true', 'false', '1', '0', 'yes', 'no', 'si', 'sí', "
+            "'verdadero', 'falso', 'y', 'n', 't', 'f'))"
+        )
+
+    def _normalize_boolean_expr(self, expr: str, dialect_name: str) -> str:
+        """Convierte booleanos textuales a literales true/false SQL."""
+        lower_expr = self._lower_expr(expr, dialect_name)
+        true_values = "'true', '1', 'yes', 'si', 'sí', 'verdadero', 'y', 't'"
+        false_values = "'false', '0', 'no', 'falso', 'n', 'f'"
+        return (
+            f"CASE WHEN {lower_expr} IN ({true_values}) THEN 'true' "
+            f"WHEN {lower_expr} IN ({false_values}) THEN 'false' ELSE NULL END"
+        )
 
     def _email_valid_expr(self, expr: str, dialect_name: str) -> str:
         """
@@ -937,9 +1129,74 @@ WITH cleaned_data AS (
 
     def _normalize_numeric_expr(self, expr: str, dialect_name: str) -> str:
         """
-        Normaliza números eliminando comas de miles.
+        Normaliza moneda, negativos contables y separadores locales.
         """
-        return f"REPLACE({expr}, ',', '')"
+        signed_expr = f"REPLACE(REPLACE({expr}, '(', '-'), ')', '')"
+        if dialect_name == "BigQuery":
+            cleaned = f"REGEXP_REPLACE({signed_expr}, r'[^0-9,.-]', '')"
+        else:
+            cleaned = f"REGEXP_REPLACE({signed_expr}, '[^0-9,.-]', '')"
+
+        has_both_separators = self._sql_regex_match(
+            cleaned,
+            r"^-?[0-9].*,.*\..*$|^-?[0-9].*\..*,.*$",
+            dialect_name,
+        )
+        european_format = self._sql_regex_match(
+            cleaned,
+            r"^-?[0-9]{1,3}(\.[0-9]{3})+,[0-9]+$",
+            dialect_name,
+        )
+        comma_decimal = self._sql_regex_match(
+            cleaned,
+            r"^-?[0-9]+,[0-9]{1,2}$",
+            dialect_name,
+        )
+        european_value = f"REPLACE(REPLACE({cleaned}, '.', ''), ',', '.')"
+        comma_value = f"REPLACE({cleaned}, ',', '.')"
+        thousands_value = f"REPLACE({cleaned}, ',', '')"
+
+        return (
+            f"CASE WHEN {has_both_separators} AND {european_format} "
+            f"THEN {european_value} "
+            f"WHEN {has_both_separators} THEN {thousands_value} "
+            f"WHEN {comma_decimal} THEN {comma_value} "
+            f"ELSE {thousands_value} END"
+        )
+
+    def _sql_regex_match(self, expr: str, pattern: str, dialect_name: str) -> str:
+        """Genera una coincidencia regex compatible con el dialecto SQL."""
+        escaped = pattern.replace("\\", "\\\\")
+        if dialect_name == "PostgreSQL":
+            return f"({expr} ~ '{pattern}')"
+        if dialect_name == "MySQL":
+            return f"({expr} REGEXP '{escaped}')"
+        if dialect_name == "Snowflake":
+            return f"REGEXP_LIKE({expr}, '{escaped}')"
+        if dialect_name == "BigQuery":
+            return f"REGEXP_CONTAINS({expr}, r'{escaped}')"
+        return f"({expr} LIKE '%')"
+
+    def _normalize_date_expr(self, expr: str) -> str:
+        """Normaliza meses en español a abreviaturas inglesas aceptadas por SQL."""
+        normalized = f"REPLACE(REPLACE(LOWER({expr}), ' de ', ' '), 'setiembre', 'sep')"
+        month_replacements = (
+            ("septiembre", "sep"),
+            ("diciembre", "dec"),
+            ("noviembre", "nov"),
+            ("octubre", "oct"),
+            ("agosto", "aug"),
+            ("julio", "jul"),
+            ("junio", "jun"),
+            ("mayo", "may"),
+            ("abril", "apr"),
+            ("marzo", "mar"),
+            ("febrero", "feb"),
+            ("enero", "jan"),
+        )
+        for source, target in month_replacements:
+            normalized = f"REPLACE({normalized}, '{source}', '{target}')"
+        return normalized
 
     def _cast_to_text(self, expr: str, dialect_name: str) -> str:
         """
@@ -1118,6 +1375,11 @@ WITH cleaned_data AS (
 
         escaped = identifier.replace('"', '""')
         return f'"{escaped}"'
+
+    @staticmethod
+    def _quote_sql_literal(value: Any) -> str:
+        """Escapa un valor textual para usarlo como literal SQL."""
+        return "'" + str(value).replace("'", "''") + "'"
 
     def _quote_table(self, table_name: str, dialect_name: str) -> str:
         """
