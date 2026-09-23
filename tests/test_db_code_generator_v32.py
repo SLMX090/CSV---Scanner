@@ -168,7 +168,8 @@ def test_generated_sql_escapes_column_names_in_quarantine():
 
     sql = DatabaseCodeGenerator(df, profile, validation_results).generate_complete_script()
 
-    assert "'customer''s name'" in sql
+    assert "'customer''s name'" not in sql
+    assert "INSERT INTO datos_cuarentena" not in sql
 
 
 def test_generated_python_normalizes_currency_and_named_months():
@@ -223,3 +224,85 @@ def test_generated_code_normalizes_boolean_values():
     assert cleaned["activo"].tolist() == [True, True, False, False]
     assert "CASE WHEN LOWER" in sql
     assert "'sí'" in sql
+
+
+def test_identifiers_are_preserved_as_text():
+    df = pd.DataFrame({
+        "folio_pedido": ["PIT-0014", "PIT0065", "000123", "ABC123"],
+        "sku": ["0001", "0002", "0003", "0004"],
+    })
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+    generator = DatabaseCodeGenerator(df, profile, validation_results)
+
+    sql = generator.generate_complete_script()
+    python_code = generator.generate_python_cleanup_code()
+    namespace = {}
+    exec(python_code, namespace)
+    cleaned = namespace["cleanup_data"](df)
+
+    assert '"folio_pedido" TEXT' in sql
+    assert '"sku" TEXT' in sql
+    assert cleaned["folio_pedido"].tolist() == df["folio_pedido"].tolist()
+    assert cleaned["sku"].tolist() == df["sku"].tolist()
+
+
+def test_generated_python_rejects_arbitrary_text_in_numeric_values():
+    df = pd.DataFrame({"importe": ["$1,250.50", "1.250,50", "(1,250.50)", "abc1250xyz"]})
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+    generator = DatabaseCodeGenerator(df, profile, validation_results)
+    namespace = {}
+    exec(generator.generate_python_cleanup_code(), namespace)
+    cleaned = namespace["cleanup_data"](df)
+
+    assert cleaned["importe"].iloc[:3].tolist() == [1250.5, 1250.5, -1250.5]
+    assert pd.isna(cleaned["importe"].iloc[3])
+
+
+def test_generated_postgresql_dates_use_explicit_formats():
+    df = pd.DataFrame({
+        "fecha_devolucion": [
+            "2024-01-10", "10/01/2024", "10-ene-24",
+            "10 de enero de 2024", "2024-99-99",
+        ]
+    })
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+    sql = DatabaseCodeGenerator(df, profile, validation_results).generate_complete_script()
+
+    assert "TO_DATE" in sql
+    assert "DD/MM/YYYY" in sql
+    assert "DD-MON-YY" in sql
+    assert "DD-MON-YYYY" in sql
+    assert "2024-99-99" not in sql
+
+
+def test_generated_sql_has_no_concatenated_clauses():
+    df, profile, validation_results = build_test_context()
+    sql = DatabaseCodeGenerator(df, profile, validation_results).generate_complete_script()
+
+    for invalid_fragment in ("valueFROM", "okUNION", "ALLSELECT", "nulosFROM"):
+        assert invalid_fragment not in sql
+
+
+def test_generated_sql_supports_dataset_names_and_replace_strategy():
+    df, profile, validation_results = build_test_context()
+    generator = DatabaseCodeGenerator(
+        df,
+        profile,
+        validation_results,
+        table_name="devoluciones",
+        source_schema="origin",
+        source_table="devoluciones_raw",
+        target_schema="staging",
+        load_strategy="REPLACE",
+    )
+
+    sql = generator.generate_complete_script()
+
+    assert "CREATE TABLE IF NOT EXISTS staging.devoluciones" in sql
+    assert "CREATE TABLE IF NOT EXISTS staging.devoluciones_cuarentena" in sql
+    assert "FROM origin.devoluciones_raw AS src" in sql
+    assert "TRUNCATE TABLE staging.devoluciones;" in sql
+    assert "TRUNCATE TABLE staging.devoluciones_cuarentena;" in sql

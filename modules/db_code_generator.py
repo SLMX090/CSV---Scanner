@@ -118,6 +118,10 @@ class DatabaseCodeGenerator:
         table_name: str = "datos_limpios",
         dialect: str | None = None,
         source_table: str = "source_table",
+        source_schema: str | None = None,
+        target_schema: str | None = None,
+        quarantine_table: str | None = None,
+        load_strategy: str = "APPEND",
     ) -> None:
         """
         Inicializa el generador.
@@ -129,12 +133,24 @@ class DatabaseCodeGenerator:
             table_name (str): Nombre de la tabla limpia destino.
             dialect (str | None): Dialecto SQL objetivo.
             source_table (str): Nombre de la tabla origen/staging.
+            source_schema (str | None): Esquema de la tabla origen.
+            target_schema (str | None): Esquema de las tablas destino.
+            quarantine_table (str | None): Tabla de cuarentena.
+            load_strategy (str): APPEND o REPLACE.
         """
         self.df = df
         self.profile = profile or {}
         self.validation_results = validation_results or {}
         self.table_name = table_name or "datos_limpios"
         self.source_table = source_table or "source_table"
+        self.source_schema = source_schema.strip() if source_schema else None
+        self.target_schema = target_schema.strip() if target_schema else None
+        self.quarantine_table = quarantine_table or (
+            "datos_cuarentena"
+            if self.table_name == "datos_limpios"
+            else f"{self.table_name}_cuarentena"
+        )
+        self.load_strategy = self._normalize_load_strategy(load_strategy)
 
         self.dialect_name = self._normalize_dialect(dialect or DEFAULT_SQL_DIALECT)
         self.dialect_config = SQL_DIALECTS.get(
@@ -145,8 +161,8 @@ class DatabaseCodeGenerator:
         self.jinja_env = Environment(
             loader=BaseLoader(),
             autoescape=False,
-            trim_blocks=True,
-            lstrip_blocks=True,
+            trim_blocks=False,
+            lstrip_blocks=False,
         )
 
     def generate_complete_script(self, dialect: str | None = None) -> str:
@@ -172,12 +188,18 @@ class DatabaseCodeGenerator:
             "now": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "dialect_name": active_dialect,
             "dialect": dialect_conf,
-            "table_name": self._quote_table(self.table_name, active_dialect),
+            "table_name": self._quote_table(self._qualified_target_table(), active_dialect),
             "table_name_raw": self.table_name,
-            "source_table": self._quote_table(self.source_table, active_dialect),
+            "source_table": self._quote_table(self._qualified_source_table(), active_dialect),
             "source_alias": "src",
-            "quarantine_table": self._quote_table("datos_cuarentena", active_dialect),
+            "quarantine_table": self._quote_table(
+                self._qualified_quarantine_table(), active_dialect
+            ),
+            "load_strategy": self.load_strategy,
             "columns": columns_meta,
+            "quarantine_columns": [
+                col for col in columns_meta if col["flag_expr"] != "TRUE"
+            ],
             "clean_table_id_definition": self._get_identity_column_definition(
                 "id_registro",
                 active_dialect,
@@ -234,6 +256,8 @@ class DatabaseCodeGenerator:
             "        return value",
             "    text = str(value).strip()",
             "    negative = text.startswith('(') and text.endswith(')')",
+            "    if not re.fullmatch(r'\\(?[+-]?(\\$|€|£|¥|[A-Za-z]{3})?[ ]*[0-9][0-9., ]*\\)?', text):",
+            "        return pd.NA",
             "    text = re.sub(r'[^0-9,.-]', '', text)",
             "    if ',' in text and '.' in text:",
             "        if text.rfind(',') > text.rfind('.'):",
@@ -375,6 +399,8 @@ class DatabaseCodeGenerator:
 
         text = str(value).strip()
         negative = text.startswith("(") and text.endswith(")")
+        if not re.fullmatch(r"\(?[+-]?(\$|€|£|¥|[A-Za-z]{3})?[ ]*[0-9][0-9., ]*\)?", text):
+            return pd.NA
         text = re.sub(r"[^0-9,.-]", "", text)
 
         if "," in text and "." in text:
@@ -463,8 +489,9 @@ class DatabaseCodeGenerator:
             "database:",
             f"  table_name: {self.table_name}",
             f"  dialect: {self.dialect_name}",
-            "  source_table: source_table",
-            "  quarantine_table: datos_cuarentena",
+            f"  source_table: {self._qualified_source_table()}",
+            f"  quarantine_table: {self._qualified_quarantine_table()}",
+            f"  load_strategy: {self.load_strategy}",
             "",
             "columns:",
         ]
@@ -594,6 +621,11 @@ CREATE TABLE IF NOT EXISTS {{ quarantine_table }} (
     fila_completa_json TEXT
 );
 
+{% if load_strategy == 'REPLACE' %}
+TRUNCATE TABLE {{ table_name }};
+TRUNCATE TABLE {{ quarantine_table }};
+{% endif %}
+
 -- ============================================================================
 -- 3. Insertar filas válidas en tabla limpia
 -- ============================================================================
@@ -604,19 +636,20 @@ INSERT INTO {{ table_name }} (
 {%- endfor %}
 )
 SELECT
-{%- for col in columns %}
+{% for col in columns %}
     {{ col.value_alias }}{% if not loop.last %},{% endif %}
-{%- endfor %}
+{% endfor %}
 FROM cleaned_data
 WHERE
-{%- for col in columns %}
+{% for col in columns %}
     {{ col.ok_alias }}{% if not loop.last %} AND{% endif %}
-{%- endfor %}
+{% endfor %}
 ;
 
 -- ============================================================================
 -- 4. Insertar filas inválidas en cuarentena
 -- ============================================================================
+{% if quarantine_columns %}
 {{ cleaned_data_cte }}
 INSERT INTO {{ quarantine_table }} (
     fecha_rechazo,
@@ -625,7 +658,7 @@ INSERT INTO {{ quarantine_table }} (
     valor_original,
     fila_completa_json
 )
-{%- for col in columns %}
+{% for col in quarantine_columns %}
 SELECT
     CURRENT_TIMESTAMP,
     {{ col.name_literal }},
@@ -634,11 +667,12 @@ SELECT
     fila_completa_json_raw
 FROM cleaned_data
 WHERE NOT {{ col.ok_alias }}
-{%- if not loop.last %}
+{% if not loop.last %}
 UNION ALL
-{%- endif %}
-{%- endfor %}
+{% endif %}
+{% endfor %}
 ;
+{% endif %}
 
 -- ============================================================================
 -- 5. Validaciones posteriores
@@ -659,9 +693,9 @@ GROUP BY columna_erronea, categoria_error
 ORDER BY total_errores DESC;
 
 SELECT
-{%- for col in columns[:20] %}
+{% for col in columns[:20] %}
     SUM(CASE WHEN {{ col.identifier }} IS NULL THEN 1 ELSE 0 END) AS {{ col.null_check_alias }}{% if not loop.last %},{% endif %}
-{%- endfor %}
+{% endfor %}
 FROM {{ table_name }};
 
 SELECT
@@ -687,7 +721,7 @@ HAVING COUNT(*) > 1;
         - fila completa serializada a JSON.
         """
         row_json_expr = self._build_row_json_expr(columns_meta, dialect_name)
-        source_table = self._quote_table(self.source_table, dialect_name)
+        source_table = self._quote_table(self._qualified_source_table(), dialect_name)
 
         cte_template = """
 WITH cleaned_data AS (
@@ -780,7 +814,8 @@ WITH cleaned_data AS (
 
         if semantic_type == "Integer":
             normalized = self._normalize_numeric_expr(trimmed_expr, dialect_name)
-            valid_expr = self._numeric_valid_expr(normalized, integer=True, dialect_name=dialect_name)
+            valid_expr = self._numeric_source_valid_expr(trimmed_expr, dialect_name)
+            valid_expr = f"({valid_expr} AND {self._numeric_valid_expr(normalized, integer=True, dialect_name=dialect_name)})"
             cast_expr = self._safe_cast_expr(normalized, sql_type, dialect_name)
             clean_expr = f"CASE WHEN {blank_expr} THEN NULL WHEN {valid_expr} THEN {cast_expr} ELSE NULL END"
             flag_expr = f"({blank_expr} OR {valid_expr})"
@@ -788,7 +823,8 @@ WITH cleaned_data AS (
 
         if semantic_type == "Float":
             normalized = self._normalize_numeric_expr(trimmed_expr, dialect_name)
-            valid_expr = self._numeric_valid_expr(normalized, integer=False, dialect_name=dialect_name)
+            valid_expr = self._numeric_source_valid_expr(trimmed_expr, dialect_name)
+            valid_expr = f"({valid_expr} AND {self._numeric_valid_expr(normalized, integer=False, dialect_name=dialect_name)})"
             cast_expr = self._safe_cast_expr(normalized, sql_type, dialect_name)
             clean_expr = f"CASE WHEN {blank_expr} THEN NULL WHEN {valid_expr} THEN {cast_expr} ELSE NULL END"
             flag_expr = f"({blank_expr} OR {valid_expr})"
@@ -802,13 +838,17 @@ WITH cleaned_data AS (
                 r"^(\d{1,4}[-/]\d{1,2}[-/]\d{1,4}"
                 r"( \d{1,2}:\d{1,2}:\d{1,2})?|"
                 r"[a-z]{3,9} \d{1,2},? \d{4}|"
-                r"\d{1,2} [a-z]{3,9} \d{4})$"
+                r"\d{1,2} [a-z]{3,9} \d{4}|"
+                r"\d{1,2}-[a-z]{3,9}-\d{2,4})$"
             )
             normalized_date_expr = self._normalize_date_expr(trimmed_expr)
             
             # Construir la validación sintáctica por Regex nativa según cada Dialecto SQL
             if dialect_name == "PostgreSQL":
-                regex_expr = f"({normalized_date_expr} ~* '{date_regex}')"
+                regex_expr = self._postgres_date_valid_expr(
+                    normalized_date_expr,
+                    date_regex,
+                )
             elif dialect_name == "MySQL":
                 escaped_regex = date_regex.replace("\\", "\\\\")
                 regex_expr = f"({normalized_date_expr} REGEXP '{escaped_regex}')"
@@ -824,7 +864,11 @@ WITH cleaned_data AS (
             # En lugar de usar _date_parse_expr (estricto), delegamos al casting seguro nativo 
             # de la clase (_safe_cast_expr) que ya está mapeado correctamente para cada dialecto.
             target_type = "TIMESTAMP" if semantic_type == "DateTime" else "DATE"
-            cast_expr = self._safe_cast_expr(normalized_date_expr, target_type, dialect_name)
+            cast_expr = self._date_cast_expr(
+                normalized_date_expr,
+                target_type,
+                dialect_name,
+            )
             
             # Si el campo es vacío -> NULL. Si cumple el formato genérico -> Ejecuta CAST seguro. Caso contrario -> NULL (Error).
             clean_expr = f"CASE WHEN {blank_expr} THEN NULL WHEN {regex_expr} THEN {cast_expr} ELSE NULL END"
@@ -860,6 +904,10 @@ WITH cleaned_data AS (
             if type_hint != "Text":
                 return type_hint
 
+        lowered = col.lower()
+        if self._is_identifier_column(col, profile_col):
+            return "Text"
+
         if dtype.startswith("int"):
             return "Integer"
 
@@ -869,7 +917,6 @@ WITH cleaned_data AS (
         if dtype == "bool":
             return "Boolean"
 
-        lowered = col.lower()
         if any(token in lowered for token in ("fecha", "date", "timestamp", "created", "updated")):
             return "Date"
 
@@ -892,7 +939,7 @@ WITH cleaned_data AS (
         )
         numeric_ratio = numeric_series.notna().mean()
 
-        if numeric_ratio >= 0.90:
+        if numeric_ratio >= 0.50:
             numeric_non_null = numeric_series.dropna()
             if numeric_non_null.empty:
                 return "Text"
@@ -1048,6 +1095,44 @@ WITH cleaned_data AS (
 
         return f"CAST({expr} AS DATE)"
 
+    def _date_cast_expr(self, expr: str, target_type: str, dialect_name: str) -> str:
+        """Usa formatos explícitos para evitar depender de DateStyle/regionalización."""
+        if dialect_name != "PostgreSQL":
+            return self._safe_cast_expr(expr, target_type, dialect_name)
+
+        date_value = (
+            f"CASE WHEN {expr} ~ '^\\d{{4}}-\\d{{1,2}}-\\d{{1,2}}' "
+            f"THEN TO_DATE({expr}, 'YYYY-MM-DD') "
+            f"WHEN {expr} ~ '^\\d{{1,2}}/\\d{{1,2}}/\\d{{4}}' "
+            f"THEN TO_DATE({expr}, 'DD/MM/YYYY') "
+            f"WHEN {expr} ~ '^\\d{{1,2}}-[a-z]{{3,9}}-\\d{{2}}$' "
+            f"THEN TO_DATE({expr}, 'DD-MON-YY') "
+            f"WHEN {expr} ~ '^\\d{{1,2}}-[a-z]{{3,9}}-\\d{{4}}$' "
+            f"THEN TO_DATE({expr}, 'DD-MON-YYYY') ELSE NULL END"
+        )
+        if target_type == "TIMESTAMP":
+            return f"({date_value})::TIMESTAMP"
+        return date_value
+
+    def _postgres_date_valid_expr(self, expr: str, date_regex: str) -> str:
+        """Valida estructura y fecha real mediante round-trip explícito."""
+        structural = f"{expr} ~* '{date_regex}'"
+        iso = (
+            f"({expr} ~ '^\\d{{4}}-\\d{{1,2}}-\\d{{1,2}}$' AND "
+            f"TO_CHAR(TO_DATE({expr}, 'YYYY-MM-DD'), 'YYYY-MM-DD') = {expr})"
+        )
+        european = (
+            f"({expr} ~ '^\\d{{1,2}}/\\d{{1,2}}/\\d{{4}}$' AND "
+            f"TO_CHAR(TO_DATE({expr}, 'DD/MM/YYYY'), 'DD/MM/YYYY') = {expr})"
+        )
+        named = (
+            f"({expr} ~ '^\\d{{1,2}}-[a-z]{{3,9}}-\\d{{2,4}}$' AND "
+            f"(CASE WHEN length(split_part({expr}, '-', 3)) = 2 "
+            f"THEN TO_DATE({expr}, 'DD-MON-YY') "
+            f"ELSE TO_DATE({expr}, 'DD-MON-YYYY') END) IS NOT NULL)"
+        )
+        return f"(({structural}) AND ({iso} OR {european} OR {named}))"
+
     def _safe_cast_expr(self, expr: str, sql_type: str, dialect_name: str) -> str:
         """
         Genera expresión de cast seguro o controlado según dialecto.
@@ -1082,6 +1167,11 @@ WITH cleaned_data AS (
             return f"REGEXP_CONTAINS({expr}, r'{escaped}')"
 
         return f"({self._safe_cast_expr(expr, 'NUMERIC', dialect_name)} IS NOT NULL)"
+
+    def _numeric_source_valid_expr(self, expr: str, dialect_name: str) -> str:
+        """Acepta decoración monetaria, pero no texto arbitrario alrededor."""
+        pattern = r"^\\(?[+-]?(\$|€|£|¥|[A-Za-z]{3})?[ ]*[0-9][0-9., ]*\\)?$"
+        return self._sql_regex_match(expr, pattern, dialect_name)
 
     def _boolean_valid_expr(self, expr: str, dialect_name: str) -> str:
         """
@@ -1196,7 +1286,28 @@ WITH cleaned_data AS (
         )
         for source, target in month_replacements:
             normalized = f"REPLACE({normalized}, '{source}', '{target}')"
+        short_month_replacements = (
+            ("ene", "jan"), ("abr", "apr"), ("ago", "aug"),
+            ("dic", "dec"),
+        )
+        for source, target in short_month_replacements:
+            normalized = f"REPLACE({normalized}, '-{source}-', '-{target}-')"
         return normalized
+
+    def _is_identifier_column(self, col: str, profile_col: dict[str, Any]) -> bool:
+        """Identifica claves/códigos que deben conservarse como texto."""
+        type_hint = str(profile_col.get("type_hint", "")).lower()
+        lowered = col.lower().strip()
+        identifier_tokens = (
+            "id", "sku", "folio", "codigo", "código", "code", "pedido",
+            "cliente", "producto", "customer", "product", "order",
+        )
+        return (
+            "ident" in type_hint
+            or lowered in identifier_tokens
+            or lowered.endswith("_id")
+            or any(token in lowered for token in ("sku", "folio", "codigo", "código", "code", "pedido"))
+        )
 
     def _cast_to_text(self, expr: str, dialect_name: str) -> str:
         """
@@ -1275,7 +1386,9 @@ WITH cleaned_data AS (
         if not index_columns:
             return ""
 
-        table_identifier = self._quote_table(self.table_name, dialect_name)
+        table_identifier = self._quote_table(
+            self._qualified_target_table(), dialect_name
+        )
         index_name = self._safe_alias(f"idx_{self.table_name}_business_keys")
 
         if dialect_name == "PostgreSQL":
@@ -1329,6 +1442,28 @@ WITH cleaned_data AS (
             return list(self.df.columns)
 
         return []
+
+    def _qualified_source_table(self) -> str:
+        if self.source_schema and "." not in self.source_table:
+            return f"{self.source_schema}.{self.source_table}"
+        return self.source_table
+
+    def _qualified_target_table(self) -> str:
+        if self.target_schema and "." not in self.table_name:
+            return f"{self.target_schema}.{self.table_name}"
+        return self.table_name
+
+    def _qualified_quarantine_table(self) -> str:
+        if self.target_schema and "." not in self.quarantine_table:
+            return f"{self.target_schema}.{self.quarantine_table}"
+        return self.quarantine_table
+
+    @staticmethod
+    def _normalize_load_strategy(strategy: str) -> str:
+        normalized = str(strategy or "APPEND").strip().upper()
+        if normalized not in {"APPEND", "REPLACE"}:
+            raise ValueError("load_strategy debe ser APPEND o REPLACE")
+        return normalized
 
     def _is_index_candidate(self, col: str) -> bool:
         """
