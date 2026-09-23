@@ -23,6 +23,7 @@ from modules.report_generator import ReportGenerator
 from modules.severity_analyzer import SeverityAnalyzer
 from modules.sql_filter_suggestions import SQLFilterSuggestions
 from modules.db_code_generator import DatabaseCodeGenerator
+from modules.analysis_service import analyze_uploaded_file, analyze_dataframe, analyze_uploaded_files, summarize_batch_results
 
 # Importar dialectos y valor por defecto para construcción de scripts SQL
 from config import SQL_DIALECTS, DEFAULT_SQL_DIALECT
@@ -126,14 +127,16 @@ with st.sidebar:
 
 
 # Sección principal
+# Se mantiene la UI para un análisis individual, pero la lógica ya se separa en
+# el servicio analysis_service para facilitar la fase 1 (múltiples archivos).
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-    "📥 Cargar Archivo",
-    "📈 Análisis",
+    "📈 Carga y análisis",
+    "📊 Perfil de datos",
     "✅ Validaciones",
     "💡 Recomendaciones",
     "📋 Datos Problemáticos",
     "💾 Código SQL/Python",
-    "⚙️ Configuración",
+    "⚙️ Configuración personalizada",
     "📥 Descargar Reporte"
 ])
 
@@ -141,136 +144,177 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 # TAB 1: CARGA DE ARCHIVO
 # ============================================================================
 with tab1:
-    st.header("Carga de Archivo CSV")
-    
+    st.header("Carga de Archivos CSV / Excel")
+
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
-        uploaded_file = st.file_uploader(
-            "Selecciona un archivo CSV",
-            type=['csv'],
-            help="Soporta archivos CSV con diferentes delimitadores y codificaciones"
+        uploaded_files = st.file_uploader(
+            "Selecciona uno o varios archivos",
+            type=['csv', 'xlsx', 'xls'],
+            accept_multiple_files=True,
+            help="Soporta CSV, XLS y XLSX. Si cargas varios archivos, se genera un resumen comparativo."
         )
-    
-    with col2:
-        if uploaded_file:
-            st.metric("Tamaño", f"{uploaded_file.size / 1024:.2f} KB")
-    
-    if uploaded_file:
-        st.divider()
-        
-        # Intenta cargar el archivo
-        spinner_msg = "Cargando archivo..."
-        if uploaded_file.size > 100 * 1024 * 1024:  # > 100MB
-            spinner_msg = "⏳ Cargando archivo grande por chunks..."
-        
-        with st.spinner(spinner_msg):
-            try:
-                df, load_info = CSVLoader.load_csv(
-                    uploaded_file,
-                    delimiter=delimiter,
-                    encoding=encoding
-                )
-                
-                # Guarda en sesión
-                st.session_state.df = df
-                st.session_state.load_info = load_info
-                
-                # Muestra información de carga
-                st.markdown('<div class="success-box">', unsafe_allow_html=True)
-                if load_info.get('chunked'):
-                    st.success("✅ Archivo grande cargado por chunks")
-                else:
-                    st.success("✅ Archivo cargado correctamente")
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Muestra información de carga con adaptaciones para chunked
-                cols = st.columns(4)
-                with cols[0]:
-                    st.metric("Filas", f"{load_info['rows']:,}")
-                with cols[1]:
-                    st.metric("Columnas", load_info['columns'])
-                with cols[2]:
-                    st.metric("Delimitador", f"'{load_info['delimiter']}'")
-                with cols[3]:
+
+    if uploaded_files:
+        if len(uploaded_files) > 1:
+            with st.spinner("Procesando lote de archivos..."):
+                try:
+                    results = analyze_uploaded_files(
+                        uploaded_files,
+                        delimiter=delimiter,
+                        encoding=encoding
+                    )
+                    summary = summarize_batch_results(results)
+                    st.session_state.batch_results = results
+                    st.session_state.batch_summary = summary
+
+                    st.markdown('<div class="success-box">', unsafe_allow_html=True)
+                    st.success(f"✅ Se analizaron {len(results)} archivos")
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                    total_rows = summary['rows'].sum() if not summary.empty else 0
+                    total_files = len(summary)
+                    st.metric("Archivos analizados", total_files)
+                    st.metric("Filas totales en lote", f"{total_rows:,}")
+
+                    st.subheader("Resumen comparativo")
+                    st.dataframe(summary, use_container_width=True)
+
+                    if not summary.empty:
+                        st.session_state.df = results[0]['df']
+                        st.session_state.load_info = results[0]['load_info']
+                        st.session_state.profile = results[0]['profile']
+                        st.session_state.validation_results = results[0]['validation_results']
+                        st.session_state.recommendations = results[0]['recommendations']
+                        st.session_state.severity_issues = results[0]['severity_issues']
+                        st.session_state.analysis_result = results[0]
+                except CSVLoadError as e:
+                    st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                    st.error(f"❌ Error al cargar el lote:\n{str(e)}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                except Exception as e:
+                    st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                    st.error(f"❌ Error inesperado en el lote:\n{str(e)}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            uploaded_file = uploaded_files[0]
+            with col2:
+                st.metric("Tamaño", f"{uploaded_file.size / 1024:.2f} KB")
+
+            st.divider()
+
+            spinner_msg = "Cargando archivo..."
+            if uploaded_file.size > 100 * 1024 * 1024:
+                spinner_msg = "⏳ Cargando archivo grande por chunks..."
+
+            with st.spinner(spinner_msg):
+                try:
+                    analysis = analyze_uploaded_file(
+                        uploaded_file,
+                        delimiter=delimiter,
+                        encoding=encoding
+                    )
+                    df = analysis['df']
+                    load_info = analysis['load_info']
+
+                    st.session_state.df = df
+                    st.session_state.load_info = load_info
+                    st.session_state.profile = analysis['profile']
+                    st.session_state.validation_results = analysis['validation_results']
+                    st.session_state.recommendations = analysis['recommendations']
+                    st.session_state.severity_issues = analysis['severity_issues']
+                    st.session_state.analysis_result = analysis
+                    st.session_state.batch_results = [analysis]
+
+                    st.markdown('<div class="success-box">', unsafe_allow_html=True)
                     if load_info.get('chunked'):
-                        st.metric("Modo", f"Chunks ({load_info.get('chunks_loaded', 0)})")
+                        st.success("✅ Archivo grande cargado por chunks")
                     else:
-                        st.metric("Modo", load_info.get('load_mode', 'permissive'))
-                
-                # Advertencia si es carga chunked (es una muestra)
-                if load_info.get('chunked'):
-                    st.markdown('<div class="info-box">', unsafe_allow_html=True)
-                    st.info(
-                        f"ℹ️ **Carga por Chunks**: Archivo grande ({uploaded_file.size / (1024*1024):.1f} MB) "
-                        f"cargado en {load_info.get('chunks_loaded', 1)} chunk(s). "
-                        "El análisis se realiza sobre el archivo completo. "
-                        "Algunos cálculos de estadísticas pueden ser aproximados."
-                    )
+                        st.success("✅ Archivo cargado correctamente")
                     st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Muestra advertencia si hay líneas problemáticas
-                if load_info.get('bad_lines_count', 0) > 0:
-                    st.markdown('<div class="warning-box">', unsafe_allow_html=True)
-                    st.warning(
-                        f"⚠️ **Pérdida de Datos Detectada**: Se omitieron {load_info['bad_lines_count']} línea(s) "
-                        f"({load_info['bad_lines_count'] / (load_info['rows'] + load_info['bad_lines_count']) * 100:.1f}% del total). "
-                        "Estas líneas no coincidían con el número esperado de columnas.\n\n"
-                        "**Recomendación**: Revisa los detalles de las líneas problemáticas y considera "
-                        "investigar la causa raíz en el archivo original."
-                    )
-                    
-                    # Muestra ejemplos y opción de descarga
-                    if load_info.get('bad_lines_sample'):
-                        col1, col2 = st.columns([3, 1])
-                        
-                        with col1:
-                            with st.expander(f"📋 Ver detalles ({len(load_info['bad_lines_sample'])} de {load_info['bad_lines_count']} problemas):"):
-                                st.markdown("**Líneas problemáticas detectadas:**")
-                                for bad_line in load_info['bad_lines_sample']:
-                                    st.code(
-                                        f"Línea {bad_line['line_number']}: "
-                                        f"{bad_line['actual_columns']} col. (esperaba {bad_line['expected_columns']})\n"
-                                        f"Contenido: {bad_line['content']}...",
-                                        language='text'
+
+                    cols = st.columns(4)
+                    with cols[0]:
+                        st.metric("Filas", f"{load_info['rows']:,}")
+                    with cols[1]:
+                        st.metric("Columnas", load_info['columns'])
+                    with cols[2]:
+                        delimiter_label = load_info.get('delimiter') or 'Excel'
+                        st.metric("Separador/Tipo", f"'{delimiter_label}'")
+                    with cols[3]:
+                        if load_info.get('chunked'):
+                            st.metric("Modo", f"Chunks ({load_info.get('chunks_loaded', 0)})")
+                        else:
+                            st.metric("Modo", load_info.get('load_mode', 'permissive'))
+
+                    if load_info.get('chunked'):
+                        st.markdown('<div class="info-box">', unsafe_allow_html=True)
+                        st.info(
+                            f"ℹ️ **Carga por Chunks**: Archivo grande ({uploaded_file.size / (1024*1024):.1f} MB) "
+                            f"cargado en {load_info.get('chunks_loaded', 1)} chunk(s). "
+                            "El análisis se realiza sobre el archivo completo. "
+                            "Algunos cálculos de estadísticas pueden ser aproximados."
+                        )
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+                    if load_info.get('bad_lines_count', 0) > 0:
+                        st.markdown('<div class="warning-box">', unsafe_allow_html=True)
+                        st.warning(
+                            f"⚠️ **Pérdida de Datos Detectada**: Se omitieron {load_info['bad_lines_count']} línea(s) "
+                            f"({load_info['bad_lines_count'] / (load_info['rows'] + load_info['bad_lines_count']) * 100:.1f}% del total). "
+                            "Estas líneas no coincidían con el número esperado de columnas.\n\n"
+                            "**Recomendación**: Revisa los detalles de las líneas problemáticas y considera "
+                            "investigar la causa raíz en el archivo original."
+                        )
+
+                        if load_info.get('bad_lines_sample'):
+                            col1, col2 = st.columns([3, 1])
+                            with col1:
+                                with st.expander(f"📋 Ver detalles ({len(load_info['bad_lines_sample'])} de {load_info['bad_lines_count']} problemas):"):
+                                    st.markdown("**Líneas problemáticas detectadas:**")
+                                    for bad_line in load_info['bad_lines_sample']:
+                                        st.code(
+                                            f"Línea {bad_line['line_number']}: "
+                                            f"{bad_line['actual_columns']} col. (esperaba {bad_line['expected_columns']})\n"
+                                            f"Contenido: {bad_line['content']}...",
+                                            language='text'
+                                        )
+
+                            with col2:
+                                try:
+                                    import pandas as pd
+                                    bad_lines_df = pd.DataFrame(load_info['bad_lines_sample'])
+                                    csv_bytes = bad_lines_df.to_csv(index=False).encode()
+                                    st.download_button(
+                                        label="⬇️ Descargar\nDetalles",
+                                        data=csv_bytes,
+                                        file_name="lineas_problematicas.csv",
+                                        mime="text/csv",
+                                        help="Descarga un CSV con los detalles de las líneas omitidas"
                                     )
-                        
-                        with col2:
-                            # Crea CSV descargable con los detalles de líneas problemáticas
-                            try:
-                                import pandas as pd
-                                bad_lines_df = pd.DataFrame(load_info['bad_lines_sample'])
-                                csv_bytes = bad_lines_df.to_csv(index=False).encode()
-                                st.download_button(
-                                    label="⬇️ Descargar\nDetalles",
-                                    data=csv_bytes,
-                                    file_name="lineas_problematicas.csv",
-                                    mime="text/csv",
-                                    help="Descarga un CSV con los detalles de las líneas omitidas"
-                                )
-                            except Exception:
-                                pass  # Si falla la descarga, continúa sin error
-                    
+                                except Exception:
+                                    pass
+
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+                    st.subheader("Vista Previa de Datos")
+                    st.dataframe(
+                        df.head(10),
+                        use_container_width=True,
+                        height=300
+                    )
+
+                except CSVLoadError as e:
+                    st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                    st.error(f"❌ Error al cargar el archivo:\n{str(e)}")
                     st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Muestra vista previa
-                st.subheader("Vista Previa de Datos")
-                st.dataframe(
-                    df.head(10),
-                    use_container_width=True,
-                    height=300
-                )
-                
-            except CSVLoadError as e:
-                st.markdown('<div class="error-box">', unsafe_allow_html=True)
-                st.error(f"❌ Error al cargar el archivo:\n{str(e)}")
-                st.markdown('</div>', unsafe_allow_html=True)
-            except Exception as e:
-                st.markdown('<div class="error-box">', unsafe_allow_html=True)
-                st.error(f"❌ Error inesperado:\n{str(e)}")
-                st.markdown('</div>', unsafe_allow_html=True)
+                except Exception as e:
+                    st.markdown('<div class="error-box">', unsafe_allow_html=True)
+                    st.error(f"❌ Error inesperado:\n{str(e)}")
+                    st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.info("👆 Carga un archivo CSV para comenzar el análisis")
+        st.info("👆 Carga uno o varios archivos CSV, XLS o XLSX para comenzar el análisis")
 
 
 # ============================================================================

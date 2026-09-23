@@ -21,6 +21,8 @@ class CSVLoadError(Exception):
 class CSVLoader:
     """Clase para cargar y validar archivos CSV."""
 
+    DETECTION_SAMPLE_BYTES = 1024 * 1024
+
     @staticmethod
     def validate_file(file_size_bytes):
         file_size_mb = file_size_bytes / (1024 ** 2)
@@ -64,12 +66,51 @@ class CSVLoader:
         return file_text, file_bytes, encoding
 
     @staticmethod
+    def _get_file_size(file_object):
+        """Obtiene el tamaño sin conservar una posición parcial de lectura."""
+        try:
+            current_position = file_object.tell()
+            file_object.seek(0, 2)
+            file_size = file_object.tell()
+            file_object.seek(current_position)
+            return file_size
+        except (AttributeError, OSError):
+            return None
+
+    @staticmethod
+    def _read_detection_sample(file_object, encoding=None):
+        """Lee solo una muestra para detectar codificación y delimitador."""
+        try:
+            file_object.seek(0)
+        except Exception:
+            pass
+
+        sample = file_object.read(CSVLoader.DETECTION_SAMPLE_BYTES)
+        if isinstance(sample, bytes):
+            if encoding is None:
+                encoding = CSVLoader.detect_encoding(sample)
+            sample_text = sample.decode(encoding, errors='replace')
+        elif isinstance(sample, str):
+            encoding = encoding or 'utf-8'
+            sample_text = sample
+        else:
+            raise CSVLoadError('Tipo de archivo no soportado para detección CSV')
+
+        try:
+            file_object.seek(0)
+        except Exception:
+            pass
+
+        return sample_text, encoding
+
+    @staticmethod
     def detect_delimiter(sample_data, encoding='utf-8'):
         delimiter_scores = {}
+        sample_data = sample_data.lstrip('\ufeff')
 
         for delimiter in COMMON_DELIMITERS:
             try:
-                reader = csv.reader(sample_data.strip().split('\n'), delimiter=delimiter)
+                reader = csv.reader(io.StringIO(sample_data), delimiter=delimiter)
                 rows = list(reader)
                 if not rows:
                     continue
@@ -100,6 +141,12 @@ class CSVLoader:
                 continue
 
         if not delimiter_scores:
+            try:
+                detected = csv.Sniffer().sniff(sample_data, delimiters=''.join(COMMON_DELIMITERS))
+                if detected.delimiter in COMMON_DELIMITERS:
+                    return detected.delimiter
+            except csv.Error:
+                pass
             raise CSVLoadError(
                 'No se pudo detectar el delimitador automáticamente. '
                 'Intente especificar el delimitador manualmente.'
@@ -142,20 +189,25 @@ class CSVLoader:
     @staticmethod
     def load_csv_chunked(file_object, delimiter=None, encoding=None, progress_callback=None):
         try:
-            file_text, file_bytes, encoding = CSVLoader._read_file_content(file_object, encoding)
-            CSVLoader.validate_file(len(file_bytes))
+            file_size = CSVLoader._get_file_size(file_object)
+            if file_size is not None:
+                CSVLoader.validate_file(file_size)
 
             if delimiter is None:
-                sample_text = '\n'.join(file_text.split('\n')[:5])
+                sample_text, encoding = CSVLoader._read_detection_sample(file_object, encoding)
                 delimiter = CSVLoader.detect_delimiter(sample_text, encoding)
 
             chunks = []
             chunk_index = 0
-            csv_stream = io.StringIO(file_text)
+            try:
+                file_object.seek(0)
+            except Exception:
+                pass
 
             for chunk in pd.read_csv(
-                csv_stream,
+                file_object,
                 delimiter=delimiter,
+                encoding=encoding,
                 chunksize=CHUNK_SIZE_ROWS,
                 on_bad_lines='skip'
             ):
@@ -188,19 +240,79 @@ class CSVLoader:
             raise CSVLoadError(f'Error al cargar archivo por chunks: {str(e)}')
 
     @staticmethod
+    def load_excel(file_object, file_name=None, sheet_name=0):
+        """Carga un archivo Excel (.xls/.xlsx)."""
+        try:
+            file_name = (file_name or getattr(file_object, 'name', '')).lower()
+            try:
+                file_object.seek(0)
+            except Exception:
+                pass
+
+            if file_name.endswith('.xls'):
+                engine = 'xlrd'
+            else:
+                engine = 'openpyxl'
+
+            df = pd.read_excel(file_object, sheet_name=sheet_name, engine=engine)
+            if df.empty:
+                raise CSVLoadError('El archivo Excel está vacío después de procesar')
+            if df.shape[1] == 0:
+                raise CSVLoadError('El archivo Excel no tiene columnas')
+
+            df.columns = CSVLoader.clean_column_names(df.columns)
+
+            return df, {
+                'source_type': 'excel',
+                'file_name': file_name,
+                'sheet_name': sheet_name,
+                'rows': df.shape[0],
+                'columns': df.shape[1],
+                'delimiter': None,
+                'encoding': 'excel',
+                'load_mode': 'excel',
+                'bad_lines_count': 0,
+                'bad_lines_sample': []
+            }
+        except Exception as e:
+            raise CSVLoadError(f'Error al cargar el archivo Excel: {str(e)}')
+
+    @staticmethod
+    def load_file(file_object, file_name=None, delimiter=None, encoding=None):
+        """Carga un archivo CSV o Excel según la extensión."""
+        if file_object is None:
+            raise CSVLoadError('No se proporcionó ningún archivo')
+
+        file_name = (file_name or getattr(file_object, 'name', '') or '').lower()
+        if file_name.endswith('.csv') or not file_name:
+            return CSVLoader.load_csv(file_object, delimiter=delimiter, encoding=encoding)
+        if file_name.endswith(('.xlsx', '.xls', '.xlsm')):
+            return CSVLoader.load_excel(file_object, file_name=file_name)
+        raise CSVLoadError(f'Formato no soportado: {file_name or "desconocido"}')
+
+    @staticmethod
     def load_csv(file_object, delimiter=None, encoding=None):
         try:
-            file_text, file_bytes, encoding = CSVLoader._read_file_content(file_object, encoding)
-            CSVLoader.validate_file(len(file_bytes))
+            file_size = CSVLoader._get_file_size(file_object)
+            if file_size is None:
+                file_text, file_bytes, encoding = CSVLoader._read_file_content(file_object, encoding)
+                file_size = len(file_bytes)
+            else:
+                CSVLoader.validate_file(file_size)
+                sample_text, detected_encoding = CSVLoader._read_detection_sample(file_object, encoding)
+                encoding = encoding or detected_encoding
+                delimiter = delimiter or CSVLoader.detect_delimiter(sample_text, encoding)
 
-            file_size_mb = len(file_bytes) / (1024 ** 2)
+            file_size_mb = file_size / (1024 ** 2)
             use_chunked = ENABLE_CHUNKED_LOADING and file_size_mb > CHUNKED_LOAD_THRESHOLD_MB
             if use_chunked:
                 return CSVLoader.load_csv_chunked(file_object, delimiter=delimiter, encoding=encoding)
 
+            if 'file_text' not in locals():
+                file_text, file_bytes, encoding = CSVLoader._read_file_content(file_object, encoding)
+
             if delimiter is None:
-                sample_text = '\n'.join(file_text.split('\n')[:5])
-                delimiter = CSVLoader.detect_delimiter(sample_text, encoding)
+                delimiter = CSVLoader.detect_delimiter(file_text[:CSVLoader.DETECTION_SAMPLE_BYTES], encoding)
 
             bad_lines = CSVLoader._detect_bad_lines(file_text, delimiter)
 
