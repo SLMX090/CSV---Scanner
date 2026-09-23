@@ -70,6 +70,142 @@ class DataProfiler:
         }
         
         return self.profile
+
+    @classmethod
+    def generate_profile_from_chunks(cls, chunks, sample_rows=10000):
+        """Genera un perfil sin concatenar todos los chunks en memoria.
+
+        Las métricas de filas, nulos, vacíos y duplicados se acumulan sobre
+        todo el archivo. Las estadísticas detalladas de columnas se calculan
+        sobre una muestra acotada y quedan identificadas como aproximadas.
+        """
+        total_rows = 0
+        total_memory_bytes = 0
+        null_counts = None
+        empty_counts = None
+        complete_rows = 0
+        duplicate_hashes = set()
+        duplicate_count = 0
+        sample_parts = []
+        sampled_rows = 0
+        column_names = None
+        data_types = {}
+
+        for chunk in chunks:
+            if chunk is None or chunk.empty:
+                continue
+
+            if column_names is None:
+                column_names = list(chunk.columns)
+                null_counts = pd.Series(0, index=chunk.columns, dtype='int64')
+                empty_counts = pd.Series(0, index=chunk.columns, dtype='int64')
+
+            total_rows += len(chunk)
+            total_memory_bytes += int(chunk.memory_usage(deep=True).sum())
+            null_counts = null_counts.add(chunk.isna().sum(), fill_value=0)
+            complete_rows += int(chunk.notna().all(axis=1).sum())
+
+            object_columns = chunk.select_dtypes(include=['object', 'string']).columns
+            if len(object_columns):
+                empty_counts = empty_counts.add(
+                    chunk[object_columns].apply(
+                        lambda column: column.fillna('').astype(str).str.strip().eq('').sum()
+                    ),
+                    fill_value=0,
+                )
+
+            row_hashes = pd.util.hash_pandas_object(chunk, index=False)
+            new_hashes = set(row_hashes.tolist())
+            duplicate_count += len(row_hashes) - len(new_hashes - duplicate_hashes)
+            duplicate_hashes.update(new_hashes)
+
+            if sampled_rows < sample_rows:
+                sample = chunk.head(sample_rows - sampled_rows)
+                sample_parts.append(sample.copy())
+                sampled_rows += len(sample)
+
+            if not data_types:
+                data_types = chunk.dtypes.astype(str).to_dict()
+
+        if not column_names:
+            return cls(pd.DataFrame()).generate_profile()
+
+        sample_df = pd.concat(sample_parts, ignore_index=True) if sample_parts else pd.DataFrame(columns=column_names)
+        profile = cls(sample_df).generate_profile()
+        total_cells = total_rows * len(column_names)
+        null_counts = null_counts.astype(int)
+        null_total = int(null_counts.sum())
+        null_percentages = (null_counts / total_rows * 100) if total_rows else null_counts * 0
+
+        by_column = {
+            col: {
+                'count': int(null_counts[col]),
+                'percent': float(null_percentages[col]),
+                'utilization_percent': float(100 - null_percentages[col]),
+            }
+            for col in column_names
+            if null_counts[col] > 0
+        }
+        column_utilization = {
+            col: float(100 - null_percentages[col]) for col in column_names
+        }
+        problematic_columns = {
+            col: {
+                'null_count': info['count'],
+                'null_percent': info['percent'],
+                'utilization_percent': info['utilization_percent'],
+                'status': 'CRÍTICO' if info['percent'] >= 80 else 'GRAVE',
+            }
+            for col, info in by_column.items()
+            if info['percent'] >= NULL_THRESHOLD_PERCENT
+        }
+
+        profile['general_info'].update({
+            'total_rows': total_rows,
+            'total_columns': len(column_names),
+            'total_cells': total_cells,
+            'column_names': column_names,
+            'data_types': data_types,
+            'memory_usage_mb': total_memory_bytes / (1024 ** 2),
+        })
+        profile['null_analysis'].update({
+            'total_null_cells': null_total,
+            'null_percent_overall': (null_total / total_cells * 100) if total_cells else 0,
+            'complete_rows': complete_rows,
+            'complete_rows_percent': (complete_rows / total_rows * 100) if total_rows else 0,
+            'by_column': by_column,
+            'column_utilization': column_utilization,
+            'problematic_columns': problematic_columns,
+            'total_null_count': null_total,
+            'total_null_percent': (null_total / total_cells * 100) if total_cells else 0,
+            'columns_with_nulls': by_column,
+        })
+        profile['empty_strings'] = {
+            'columns_with_empty': {
+                col: {
+                    'count': int(empty_counts.get(col, 0)),
+                    'percent': float(empty_counts.get(col, 0) / total_rows * 100) if total_rows else 0,
+                }
+                for col in column_names
+                if empty_counts.get(col, 0) > 0
+            },
+            'total_empty_cells': int(empty_counts.sum()),
+        }
+        duplicate_percent = duplicate_count / total_rows * 100 if total_rows else 0
+        profile['duplicates'].update({
+            'total_duplicates': int(duplicate_count),
+            'total_duplicate_rows': int(duplicate_count),
+            'duplicates_percent': float(duplicate_percent),
+            'examples': [],
+        })
+        profile['memory_usage'] = MemoryUsage(total_memory_bytes / (1024 ** 2))
+        profile['incremental'] = {
+            'enabled': True,
+            'sample_rows': sampled_rows,
+            'sample_limit': sample_rows,
+            'column_statistics_approximate': sampled_rows < total_rows,
+        }
+        return profile
     
     def _get_general_info(self):
         """Obtiene información general del DataFrame."""

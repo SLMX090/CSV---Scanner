@@ -583,6 +583,7 @@ WITH cleaned_data AS (
 
             columns_meta.append({
                 "name": col,
+                "safe_alias": base_alias,
                 "identifier": self._quote_identifier(col, dialect_name),
                 "source_expr": source_expr,
                 "sql_type": sql_type,
@@ -1124,11 +1125,15 @@ WITH cleaned_data AS (
         """
         table_name = str(table_name)
 
+        parts = table_name.split(".")
+        safe_name_pattern = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+        if all(safe_name_pattern.match(part) for part in parts):
+            return ".".join(parts)
+
         if dialect_name == "BigQuery":
             escaped = table_name.replace("`", "``")
             return f"`{escaped}`"
 
-        parts = table_name.split(".")
         return ".".join(self._quote_identifier(part, dialect_name) for part in parts)
 
     def _safe_alias(self, value: str) -> str:

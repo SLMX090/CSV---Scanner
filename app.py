@@ -23,7 +23,13 @@ from modules.report_generator import ReportGenerator
 from modules.severity_analyzer import SeverityAnalyzer
 from modules.sql_filter_suggestions import SQLFilterSuggestions
 from modules.db_code_generator import DatabaseCodeGenerator
-from modules.analysis_service import analyze_uploaded_file, analyze_dataframe, analyze_uploaded_files, summarize_batch_results
+from modules.analysis_service import (
+    analyze_uploaded_file,
+    analyze_dataframe,
+    analyze_uploaded_files,
+    analyze_uploaded_workbook,
+    summarize_batch_results,
+)
 
 # Importar dialectos y valor por defecto para construcción de scripts SQL
 from config import SQL_DIALECTS, DEFAULT_SQL_DIALECT
@@ -157,6 +163,30 @@ with tab1:
         )
 
     if uploaded_files:
+        selected_sheet = 0
+        analyze_all_sheets = False
+        excel_files = [
+            uploaded_file for uploaded_file in uploaded_files
+            if getattr(uploaded_file, 'name', '').lower().endswith(('.xlsx', '.xls', '.xlsm'))
+        ]
+        if len(uploaded_files) == 1 and excel_files:
+            excel_file = excel_files[0]
+            try:
+                sheet_names = CSVLoader.list_excel_sheets(excel_file, excel_file.name)
+                selected_sheet = st.selectbox(
+                    "Hoja de Excel a analizar",
+                    options=sheet_names,
+                    index=0,
+                    help="Selecciona una hoja. En lotes, se analiza la primera hoja de cada Excel."
+                )
+                analyze_all_sheets = st.checkbox(
+                    "Analizar todas las hojas",
+                    value=False,
+                    help="Cada hoja se analizará como una unidad independiente en el resumen."
+                )
+            except CSVLoadError as sheet_error:
+                st.error(f"❌ No se pudieron leer las hojas: {sheet_error}")
+
         if len(uploaded_files) > 1:
             with st.spinner("Procesando lote de archivos..."):
                 try:
@@ -180,15 +210,47 @@ with tab1:
 
                     st.subheader("Resumen comparativo")
                     st.dataframe(summary, use_container_width=True)
+                    failed_count = int((summary['status'] == 'error').sum()) if 'status' in summary else 0
+                    if failed_count:
+                        st.warning(f"⚠️ {failed_count} archivo(s) no pudieron analizarse. Revisa la columna 'error'.")
 
                     if not summary.empty:
-                        st.session_state.df = results[0]['df']
-                        st.session_state.load_info = results[0]['load_info']
-                        st.session_state.profile = results[0]['profile']
-                        st.session_state.validation_results = results[0]['validation_results']
-                        st.session_state.recommendations = results[0]['recommendations']
-                        st.session_state.severity_issues = results[0]['severity_issues']
-                        st.session_state.analysis_result = results[0]
+                        report_col, csv_col = st.columns(2)
+                        with report_col:
+                            try:
+                                batch_report_path = ReportGenerator.generate_batch_excel_report(
+                                    summary,
+                                    filename=f"reporte_lote_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                                )
+                                with open(batch_report_path, 'rb') as report_file:
+                                    st.download_button(
+                                        "📊 Descargar resumen Excel",
+                                        data=report_file.read(),
+                                        file_name="resumen_lote.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        key="batch_excel_report"
+                                    )
+                            except Exception as report_error:
+                                st.warning(f"No se pudo generar el Excel del lote: {report_error}")
+                        with csv_col:
+                            st.download_button(
+                                "📄 Descargar resumen CSV",
+                                data=summary.to_csv(index=False).encode('utf-8'),
+                                file_name="resumen_lote.csv",
+                                mime="text/csv",
+                                key="batch_csv_report"
+                            )
+
+                    valid_results = [result for result in results if result.get('status', 'ok') == 'ok']
+                    if valid_results:
+                        selected_result = valid_results[0]
+                        st.session_state.df = selected_result['df']
+                        st.session_state.load_info = selected_result['load_info']
+                        st.session_state.profile = selected_result['profile']
+                        st.session_state.validation_results = selected_result['validation_results']
+                        st.session_state.recommendations = selected_result['recommendations']
+                        st.session_state.severity_issues = selected_result['severity_issues']
+                        st.session_state.analysis_result = selected_result
                 except CSVLoadError as e:
                     st.markdown('<div class="error-box">', unsafe_allow_html=True)
                     st.error(f"❌ Error al cargar el lote:\n{str(e)}")
@@ -210,10 +272,54 @@ with tab1:
 
             with st.spinner(spinner_msg):
                 try:
+                    if analyze_all_sheets and excel_files:
+                        workbook_results = analyze_uploaded_workbook(uploaded_file)
+                        workbook_summary = summarize_batch_results(workbook_results)
+                        st.session_state.batch_results = workbook_results
+                        st.session_state.batch_summary = workbook_summary
+                        valid_results = [result for result in workbook_results if result.get('status', 'ok') == 'ok']
+                        failed_count = len(workbook_results) - len(valid_results)
+                        st.success(f"✅ Se analizaron {len(valid_results)} hojas correctamente")
+                        if failed_count:
+                            st.warning(f"⚠️ {failed_count} hoja(s) no pudieron analizarse. Revisa la columna 'error'.")
+                        st.dataframe(workbook_summary, use_container_width=True)
+
+                        if not workbook_summary.empty:
+                            workbook_report_path = ReportGenerator.generate_batch_excel_report(
+                                workbook_summary,
+                                filename=f"reporte_libro_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                            )
+                            with open(workbook_report_path, 'rb') as report_file:
+                                st.download_button(
+                                    "📊 Descargar resumen Excel",
+                                    data=report_file.read(),
+                                    file_name="resumen_libro_excel.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key="workbook_excel_report",
+                                )
+                            st.download_button(
+                                "📊 Descargar resumen del libro",
+                                data=workbook_summary.to_csv(index=False).encode('utf-8'),
+                                file_name="resumen_libro_excel.csv",
+                                mime="text/csv",
+                                key="workbook_csv_report",
+                            )
+                            if valid_results:
+                                selected_result = valid_results[0]
+                                st.session_state.df = selected_result['df']
+                                st.session_state.load_info = selected_result['load_info']
+                                st.session_state.profile = selected_result['profile']
+                                st.session_state.validation_results = selected_result['validation_results']
+                                st.session_state.recommendations = selected_result['recommendations']
+                                st.session_state.severity_issues = selected_result['severity_issues']
+                                st.session_state.analysis_result = selected_result
+                        st.stop()
+
                     analysis = analyze_uploaded_file(
                         uploaded_file,
                         delimiter=delimiter,
-                        encoding=encoding
+                        encoding=encoding,
+                        sheet_name=selected_sheet,
                     )
                     df = analysis['df']
                     load_info = analysis['load_info']

@@ -1,5 +1,6 @@
 import io
 
+import modules.analysis_service as analysis_service
 from modules.analysis_service import analyze_dataframe, analyze_uploaded_file
 
 
@@ -34,3 +35,16 @@ def test_analyze_uploaded_file_handles_csv_string():
     assert result['source_name'] == 'demo.csv'
     assert result['profile']['general_info']['total_rows'] == 2
     assert 'email_validation' in result['validation_results']
+
+
+def test_analyze_large_csv_uses_incremental_profile(monkeypatch):
+    content = 'id,nombre\n1,Ana\n2,Luis\n3,Marta\n'
+    uploaded = io.StringIO(content)
+    uploaded.name = 'grande.csv'
+    monkeypatch.setattr(analysis_service, 'CHUNKED_LOAD_THRESHOLD_MB', 0)
+
+    result = analyze_uploaded_file(uploaded)
+
+    assert result['load_info']['load_mode'] == 'incremental'
+    assert result['profile']['incremental']['enabled'] is True
+    assert result['profile']['general_info']['total_rows'] == 3

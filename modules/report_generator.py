@@ -101,6 +101,45 @@ class ReportGenerator:
             self._write_problem_samples_sheet(writer)
         
         return filepath
+
+    @staticmethod
+    def generate_batch_excel_report(summary, filename=None):
+        """Genera un libro Excel con el resumen y métricas agregadas del lote."""
+        if summary is None or summary.empty:
+            raise ValueError('No hay resultados de lote para exportar')
+
+        if filename is None:
+            filename = ReportHelper.get_report_filename('reporte_lote')
+
+        filepath = f'./output/{filename}.xlsx'
+        total_rows = int(summary['rows'].sum())
+        total_null_cells = int(summary['total_null_cells'].sum())
+        total_duplicates = int(summary['duplicate_rows'].sum())
+        metrics = pd.DataFrame({
+            'Métrica': [
+                'Archivos analizados',
+                'Filas totales',
+                'Celdas nulas totales',
+                'Filas duplicadas totales',
+                'Archivos con problemas críticos',
+                'Archivos con problemas graves',
+            ],
+            'Valor': [
+                len(summary),
+                total_rows,
+                total_null_cells,
+                total_duplicates,
+                int((summary['critical_issues'] > 0).sum()),
+                int((summary['severe_issues'] > 0).sum()),
+            ],
+        })
+
+        ReportHelper.create_output_directory()
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            summary.to_excel(writer, sheet_name='RESUMEN_LOTE', index=False)
+            metrics.to_excel(writer, sheet_name='METRICAS_AGREGADAS', index=False)
+
+        return filepath
     
     def _write_summary_sheet(self, writer):
         """Escribe la hoja de resumen ejecutivo con métricas dinámicas."""

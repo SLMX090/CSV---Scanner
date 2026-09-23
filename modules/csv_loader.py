@@ -187,6 +187,30 @@ class CSVLoader:
         return bad_lines
 
     @staticmethod
+    def iter_csv_chunks(file_object, delimiter=None, encoding=None):
+        """Devuelve un iterador de chunks sin cargar el CSV completo."""
+        file_size = CSVLoader._get_file_size(file_object)
+        if file_size is not None:
+            CSVLoader.validate_file(file_size)
+
+        sample_text, detected_encoding = CSVLoader._read_detection_sample(file_object, encoding)
+        encoding = encoding or detected_encoding
+        delimiter = delimiter or CSVLoader.detect_delimiter(sample_text, encoding)
+
+        try:
+            file_object.seek(0)
+        except Exception:
+            pass
+
+        return pd.read_csv(
+            file_object,
+            delimiter=delimiter,
+            encoding=encoding,
+            chunksize=CHUNK_SIZE_ROWS,
+            on_bad_lines='skip',
+        )
+
+    @staticmethod
     def load_csv_chunked(file_object, delimiter=None, encoding=None, progress_callback=None):
         try:
             file_size = CSVLoader._get_file_size(file_object)
@@ -194,23 +218,18 @@ class CSVLoader:
                 CSVLoader.validate_file(file_size)
 
             if delimiter is None:
-                sample_text, encoding = CSVLoader._read_detection_sample(file_object, encoding)
+                sample_text, detected_encoding = CSVLoader._read_detection_sample(file_object, encoding)
+                encoding = encoding or detected_encoding
                 delimiter = CSVLoader.detect_delimiter(sample_text, encoding)
 
             chunks = []
             chunk_index = 0
-            try:
-                file_object.seek(0)
-            except Exception:
-                pass
-
-            for chunk in pd.read_csv(
+            chunk_iterator = CSVLoader.iter_csv_chunks(
                 file_object,
                 delimiter=delimiter,
                 encoding=encoding,
-                chunksize=CHUNK_SIZE_ROWS,
-                on_bad_lines='skip'
-            ):
+            )
+            for chunk in chunk_iterator:
                 if not chunk.empty:
                     chunks.append(chunk)
                     chunk_index += 1
@@ -278,7 +297,27 @@ class CSVLoader:
             raise CSVLoadError(f'Error al cargar el archivo Excel: {str(e)}')
 
     @staticmethod
-    def load_file(file_object, file_name=None, delimiter=None, encoding=None):
+    def list_excel_sheets(file_object, file_name=None):
+        """Devuelve los nombres de hojas disponibles sin cargar sus datos."""
+        try:
+            file_name = (file_name or getattr(file_object, 'name', '')).lower()
+            engine = 'xlrd' if file_name.endswith('.xls') else 'openpyxl'
+            try:
+                file_object.seek(0)
+            except Exception:
+                pass
+            with pd.ExcelFile(file_object, engine=engine) as workbook:
+                return list(workbook.sheet_names)
+        except Exception as e:
+            raise CSVLoadError(f'Error al leer las hojas del archivo Excel: {str(e)}')
+        finally:
+            try:
+                file_object.seek(0)
+            except Exception:
+                pass
+
+    @staticmethod
+    def load_file(file_object, file_name=None, delimiter=None, encoding=None, sheet_name=0):
         """Carga un archivo CSV o Excel según la extensión."""
         if file_object is None:
             raise CSVLoadError('No se proporcionó ningún archivo')
@@ -287,7 +326,7 @@ class CSVLoader:
         if file_name.endswith('.csv') or not file_name:
             return CSVLoader.load_csv(file_object, delimiter=delimiter, encoding=encoding)
         if file_name.endswith(('.xlsx', '.xls', '.xlsm')):
-            return CSVLoader.load_excel(file_object, file_name=file_name)
+            return CSVLoader.load_excel(file_object, file_name=file_name, sheet_name=sheet_name)
         raise CSVLoadError(f'Formato no soportado: {file_name or "desconocido"}')
 
     @staticmethod

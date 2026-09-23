@@ -40,6 +40,20 @@ class TestDataProfilerGeneralInfo:
         
         assert profile['general_info']['total_rows'] == 1
 
+    def test_profile_from_chunks_accumulates_full_dataset_metrics(self):
+        chunks = [
+            pd.DataFrame({'id': [1, 2], 'valor': ['A', None]}),
+            pd.DataFrame({'id': [2, 3], 'valor': [None, 'C']}),
+        ]
+
+        profile = DataProfiler.generate_profile_from_chunks(iter(chunks), sample_rows=2)
+
+        assert profile['general_info']['total_rows'] == 4
+        assert profile['null_analysis']['total_null_cells'] == 2
+        assert profile['duplicates']['total_duplicates'] == 1
+        assert profile['incremental']['enabled'] is True
+        assert profile['incremental']['column_statistics_approximate'] is True
+
 
 class TestDataProfilerNullAnalysis:
     """Pruebas para análisis de valores nulos."""
