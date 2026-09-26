@@ -1,4 +1,4 @@
-# 📊 Analizador de Calidad de Datos CSV - v3.2
+# 📊 Analizador de Calidad de Datos CSV - v3.3
 
 ![Python](https://img.shields.io/badge/python-3.8+-blue) ![Status](https://img.shields.io/badge/status-active-green)
 
