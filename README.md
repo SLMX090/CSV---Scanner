@@ -272,13 +272,13 @@ Tamaño          Método
 
 ## 📝 Versión y Licencia
 
-**Versión:** 3.2.0  
-**Última actualización:** Junio 2026  
+**Versión:** 3.3.6  
+**Última actualización:** Septiembre 2026  
 **Licencia:** MIT
 
 ---
 
-**Hecha con ❤️ para simplificar análisis de calidad de datos**
+**Hecha para simplificar análisis de calidad de datos**
 
 ## 🔍 Ejemplos de Uso
 
@@ -420,9 +420,6 @@ Este proyecto es ideal para estudiantes de Ingeniería en Tecnologías de la Inf
 
 ## 🚀 Mejoras Futuras
 
-- [ ] Conexión directa a base de datos
-- [ ] Aplicar automáticamente transformaciones
-- [ ] Machine Learning para detección de anomalías
 - [ ] Interfaz gráfica avanzada
 - [ ] Historial de análisis
 - [ ] Comparación entre versiones
