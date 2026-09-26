@@ -1238,6 +1238,6 @@ with tab8:
 st.divider()
 st.markdown("""
 ---
-**Analizador de Calidad de Datos CSV** | Versión 3.2.1
+**Analizador de Calidad de Datos CSV** | Versión 3.3.6
 Desarrollado para análisis de datos antes de cargar a base de datos
 """)

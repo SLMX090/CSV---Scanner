@@ -1,8 +1,8 @@
 # 📊 Analizador de Calidad de Datos CSV - v3.2
 
-![Tests](https://img.shields.io/badge/tests-85+-green) ![Python](https://img.shields.io/badge/python-3.8+-blue) ![Status](https://img.shields.io/badge/status-stable-green)
+![Python](https://img.shields.io/badge/python-3.8+-blue) ![Status](https://img.shields.io/badge/status-active-green)
 
-Herramienta completa para analizar archivos CSV, identificar problemas de calidad de datos, y **generar código listo para producción** que incluye limpieza, validación y carga a BD. A partir de la versión **3.x**, la generación de código SQL utiliza un motor de plantillas Jinja2 con soporte multidialecto y tipado inteligente.
+Herramienta para analizar archivos CSV y Excel, identificar problemas de calidad de datos y producir artefactos útiles para limpieza, validación y carga a base de datos. La versión actual incluye análisis por lote, detección inteligente de problemas, generación de SQL/Python y exportación de reportes estructurados con soporte multidialecto.
 
 ## 🎯 Características Principales
 
@@ -37,7 +37,7 @@ Herramienta completa para analizar archivos CSV, identificar problemas de calida
 - ✅ Reglas de negocio específicas
 
 ### 📥 ✨ Reportes Mejorados (NUEVO)
-- ✅ Excel con **15 hojas** de análisis completo
+- ✅ Excel con análisis completo en múltiples hojas
 - ✅ HTML con información interactiva
 - ✅ Incluye código SQL/Python generado
 - ✅ Configuración YAML exportada
@@ -133,7 +133,9 @@ def cleanup_data(df):
 
 ---
 
-## 📊 Contenido del Reporte Excel (15 Hojas)
+## 📊 Contenido del Reporte Excel
+
+La exportación actual del proyecto organiza la información en varias hojas temáticas para facilitar la revisión del análisis.
 
 | # | Hoja | Contenido |
 |---|------|----------|
@@ -150,8 +152,9 @@ def cleanup_data(df):
 | 11 | **FILTROS_SQL** | Filtros SQL por problema |
 | 12 | **CODIGO_SQL** | ✨ **Script SQL completo** |
 | 13 | **CODIGO_PYTHON** | ✨ **Script Python** |
-| 14 | **CONFIG_YAML** | ✨ **Configuración YAML** |
-| 15 | **CUARENTENA** | ✨ **Registros rechazados y categorías de error** |
+| 14 | **CONFIG_YAML** | ✨ **Configuración YAML exportada** |
+
+La generación SQL incorpora el manejo de cuarentena y validación de errores dentro del script, mientras que el libro exportado mantiene una estructura clara para revisión humana y análisis posterior.
 
 ---
 
@@ -247,14 +250,11 @@ Reglas predefinidas para sectores:
 # Ejecutar todos los tests
 pytest
 
-# Con cobertura
-pytest --cov=modules --cov=utils
-
 # Archivo específico
 pytest tests/test_validators.py -v
 ```
 
-**Cobertura:** 85+ tests para CSV Loader, Validators, Profiler, Patterns
+La suite principal del proyecto cubre la validación de carga, perfilado, validaciones, patrones, lote y generación de SQL/Python, y se puede usar como referencia para comprobar cambios en la lógica del analizador.
 
 ---
 
