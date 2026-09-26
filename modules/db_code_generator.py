@@ -53,14 +53,9 @@ class DatabaseCodeGenerator:
 
     DATE_FORMAT_CANDIDATES = (
         "%Y-%m-%d",
-        "%m/%d/%Y",
         "%d/%m/%Y",
-        "%m-%d-%Y",
-        "%d-%m-%Y",
-        "%Y/%m/%d",
-        "%Y-%m-%d %H:%M:%S",
-        "%m/%d/%Y %H:%M:%S",
-        "%d/%m/%Y %H:%M:%S",
+        "%d-%b-%y",
+        "%d-%b-%Y",
     )
 
     PYTHON_TO_SQL_DATE_FORMATS = {
@@ -121,7 +116,7 @@ class DatabaseCodeGenerator:
         source_schema: str | None = None,
         target_schema: str | None = None,
         quarantine_table: str | None = None,
-        load_strategy: str = "APPEND",
+        load_strategy: str = "REPLACE",
     ) -> None:
         """
         Inicializa el generador.
@@ -136,7 +131,8 @@ class DatabaseCodeGenerator:
             source_schema (str | None): Esquema de la tabla origen.
             target_schema (str | None): Esquema de las tablas destino.
             quarantine_table (str | None): Tabla de cuarentena.
-            load_strategy (str): APPEND o REPLACE.
+            load_strategy (str): APPEND o REPLACE. REPLACE es el valor
+                predeterminado para que el script sea seguro al reejecutarse.
         """
         self.df = df
         self.profile = profile or {}
@@ -629,7 +625,9 @@ TRUNCATE TABLE {{ quarantine_table }};
 -- ============================================================================
 -- 3. Insertar filas válidas en tabla limpia
 -- ============================================================================
+
 {{ cleaned_data_cte }}
+
 INSERT INTO {{ table_name }} (
 {%- for col in columns %}
     {{ col.identifier }}{% if not loop.last %},{% endif %}
@@ -650,7 +648,9 @@ WHERE
 -- 4. Insertar filas inválidas en cuarentena
 -- ============================================================================
 {% if quarantine_columns %}
+
 {{ cleaned_data_cte }}
+
 INSERT INTO {{ quarantine_table }} (
     fecha_rechazo,
     columna_erronea,
@@ -724,7 +724,22 @@ HAVING COUNT(*) > 1;
         source_table = self._quote_table(self._qualified_source_table(), dialect_name)
 
         cte_template = """
-WITH cleaned_data AS (
+    -- WITH cleaned_data AS (resultado final de las etapas de origen y parseo)
+WITH source_data AS (
+    SELECT
+        src.*
+{%- for col in date_columns %}
+        , {{ col.date_normalize_expr }} AS {{ col.date_normalize_alias }}
+{%- endfor %}
+    FROM {{ source_table }} AS src
+), parsed_data AS (
+    SELECT
+        src.*
+{%- for col in date_columns %}
+    , {{ col.date_parse_expr }} AS {{ col.date_parse_alias }}
+{%- endfor %}
+    FROM source_data AS src
+), cleaned_data AS (
     SELECT
 {%- for col in columns %}
         {{ col.clean_expr }} AS {{ col.value_alias }},
@@ -732,12 +747,13 @@ WITH cleaned_data AS (
         {{ col.raw_text_expr }} AS {{ col.raw_text_alias }},
 {%- endfor %}
         {{ row_json_expr }} AS fila_completa_json_raw
-    FROM {{ source_table }} AS src
+    FROM parsed_data AS src
 )
 """
         template = self.jinja_env.from_string(cte_template)
         return template.render(
             columns=columns_meta,
+            date_columns=[col for col in columns_meta if col.get("date_parse_expr")],
             row_json_expr=row_json_expr,
             source_table=source_table,
         ).strip()
@@ -794,8 +810,48 @@ WITH cleaned_data AS (
                 "null_check_alias": self._quote_identifier(f"{base_alias}_nulos", dialect_name),
                 "is_index_candidate": self._is_index_candidate(col),
             })
+            if semantic_type in ("Date", "DateTime"):
+                normalized_date_expr = self._normalize_date_expr(trimmed_expr)
+                target_type = "TIMESTAMP" if semantic_type == "DateTime" else "DATE"
+                columns_meta[-1].update({
+                    "date_normalize_alias": f"{base_alias}_normalized",
+                    "date_normalize_expr": normalized_date_expr,
+                    "date_parse_alias": f"{base_alias}_parsed",
+                    "date_parse_expr": self._date_cast_expr(
+                        f"{base_alias}_normalized",
+                        target_type,
+                        dialect_name,
+                    ),
+                })
+
+        self._apply_date_range_validation(columns_meta)
 
         return columns_meta
+
+    def _apply_date_range_validation(self, columns_meta: list[dict[str, Any]]) -> None:
+        """Marca una fecha final como inválida cuando precede a su inicio."""
+        by_name = {str(col["name"]).lower(): col for col in columns_meta}
+        pairs = (
+            ("fecha_inicio", "fecha_fin"),
+            ("inicio", "fin"),
+            ("start_date", "end_date"),
+            ("start", "end"),
+        )
+        for start_name, end_name in pairs:
+            start = by_name.get(start_name)
+            end = by_name.get(end_name)
+            if not start or not end:
+                continue
+            if not start.get("date_parse_alias") or not end.get("date_parse_alias"):
+                continue
+            range_expr = (
+                f"({start['date_parse_alias']} IS NULL OR "
+                f"{end['date_parse_alias']} IS NULL OR "
+                f"{end['date_parse_alias']} >= {start['date_parse_alias']})"
+            )
+            end["flag_expr"] = f"({end['flag_expr']} AND {range_expr})"
+            end["error_category"] = "RANGO_FECHAS_INVALIDO"
+            break
 
     def _build_clean_and_flag_expr(
         self,
@@ -831,48 +887,9 @@ WITH cleaned_data AS (
             return clean_expr, flag_expr, "TIPO_DATO_NUMERICO"
 
         if semantic_type in ("Date", "DateTime"):
-            # Expresión regular universal para validar estructura genérica de fecha:
-            # Soporta componentes de 1 a 4 dígitos separados de forma indistinta por '-' o '/'
-            # Opcionalmente acepta componentes de hora al final (ej: 2026-06-05, 05/06/2026, 2026-06-05 01:20:00)
-            date_regex = (
-                r"^(\d{1,4}[-/]\d{1,2}[-/]\d{1,4}"
-                r"( \d{1,2}:\d{1,2}:\d{1,2})?|"
-                r"[a-z]{3,9} \d{1,2},? \d{4}|"
-                r"\d{1,2} [a-z]{3,9} \d{4}|"
-                r"\d{1,2}-[a-z]{3,9}-\d{2,4})$"
-            )
-            normalized_date_expr = self._normalize_date_expr(trimmed_expr)
-            
-            # Construir la validación sintáctica por Regex nativa según cada Dialecto SQL
-            if dialect_name == "PostgreSQL":
-                regex_expr = self._postgres_date_valid_expr(
-                    normalized_date_expr,
-                    date_regex,
-                )
-            elif dialect_name == "MySQL":
-                escaped_regex = date_regex.replace("\\", "\\\\")
-                regex_expr = f"({normalized_date_expr} REGEXP '{escaped_regex}')"
-            elif dialect_name == "Snowflake":
-                escaped_regex = date_regex.replace("\\", "\\\\")
-                regex_expr = f"REGEXP_LIKE({normalized_date_expr}, '{escaped_regex}', 'i')"
-            elif dialect_name == "BigQuery":
-                escaped_regex = date_regex.replace("\\", "\\\\")
-                regex_expr = f"REGEXP_CONTAINS({normalized_date_expr}, r'(?i){escaped_regex}')"
-            else:
-                regex_expr = "TRUE"
-
-            # En lugar de usar _date_parse_expr (estricto), delegamos al casting seguro nativo 
-            # de la clase (_safe_cast_expr) que ya está mapeado correctamente para cada dialecto.
-            target_type = "TIMESTAMP" if semantic_type == "DateTime" else "DATE"
-            cast_expr = self._date_cast_expr(
-                normalized_date_expr,
-                target_type,
-                dialect_name,
-            )
-            
-            # Si el campo es vacío -> NULL. Si cumple el formato genérico -> Ejecuta CAST seguro. Caso contrario -> NULL (Error).
-            clean_expr = f"CASE WHEN {blank_expr} THEN NULL WHEN {regex_expr} THEN {cast_expr} ELSE NULL END"
-            flag_expr = f"({blank_expr} OR {regex_expr})"
+            parse_alias = f"{self._safe_alias(col)}_parsed"
+            clean_expr = f"CASE WHEN {blank_expr} THEN NULL ELSE {parse_alias} END"
+            flag_expr = f"({blank_expr} OR {parse_alias} IS NOT NULL)"
             return clean_expr, flag_expr, "FORMATO_FECHA_INVALIDO"
 
         if semantic_type == "Boolean":
@@ -1096,22 +1113,41 @@ WITH cleaned_data AS (
         return f"CAST({expr} AS DATE)"
 
     def _date_cast_expr(self, expr: str, target_type: str, dialect_name: str) -> str:
-        """Usa formatos explícitos para evitar depender de DateStyle/regionalización."""
+        """Convierte fechas de forma segura evitando que valores inválidos detengan PostgreSQL."""
         if dialect_name != "PostgreSQL":
             return self._safe_cast_expr(expr, target_type, dialect_name)
 
-        date_value = (
-            f"CASE WHEN {expr} ~ '^\\d{{4}}-\\d{{1,2}}-\\d{{1,2}}' "
-            f"THEN TO_DATE({expr}, 'YYYY-MM-DD') "
-            f"WHEN {expr} ~ '^\\d{{1,2}}/\\d{{1,2}}/\\d{{4}}' "
-            f"THEN TO_DATE({expr}, 'DD/MM/YYYY') "
-            f"WHEN {expr} ~ '^\\d{{1,2}}-[a-z]{{3,9}}-\\d{{2}}$' "
-            f"THEN TO_DATE({expr}, 'DD-MON-YY') "
-            f"WHEN {expr} ~ '^\\d{{1,2}}-[a-z]{{3,9}}-\\d{{4}}$' "
-            f"THEN TO_DATE({expr}, 'DD-MON-YYYY') ELSE NULL END"
+        # Para DD/MM/YYYY se construye primero una fecha ISO no ambigua.
+        european_iso = (
+            f"(split_part({expr}, '/', 3) || '-' || "
+            f"lpad(split_part({expr}, '/', 2), 2, '0') || '-' || "
+            f"lpad(split_part({expr}, '/', 1), 2, '0'))"
         )
+
+        date_value = (
+            "CASE "
+
+            # YYYY-MM-DD
+            f"WHEN {expr} ~ '^\\d{{4}}-\\d{{1,2}}-\\d{{1,2}}$' "
+            f"AND pg_input_is_valid({expr}, 'date') "
+            f"THEN CAST({expr} AS DATE) "
+
+            # DD/MM/YYYY
+            f"WHEN {expr} ~ '^\\d{{1,2}}/\\d{{1,2}}/\\d{{4}}$' "
+            f"AND pg_input_is_valid({european_iso}, 'date') "
+            f"THEN CAST({european_iso} AS DATE) "
+
+            # DD-MON-YY / DD-MON-YYYY
+            f"WHEN {expr} ~ '^\\d{{1,2}}-[a-z]{{3,9}}-\\d{{2,4}}$' "
+            f"AND pg_input_is_valid({expr}, 'date') "
+            f"THEN CAST({expr} AS DATE) "
+
+            "ELSE NULL END"
+        )
+
         if target_type == "TIMESTAMP":
             return f"({date_value})::TIMESTAMP"
+
         return date_value
 
     def _postgres_date_valid_expr(self, expr: str, date_regex: str) -> str:
@@ -1170,7 +1206,7 @@ WITH cleaned_data AS (
 
     def _numeric_source_valid_expr(self, expr: str, dialect_name: str) -> str:
         """Acepta decoración monetaria, pero no texto arbitrario alrededor."""
-        pattern = r"^\\(?[+-]?(\$|€|£|¥|[A-Za-z]{3})?[ ]*[0-9][0-9., ]*\\)?$"
+        pattern = r"^\(?[+-]?(\$|€|£|¥|[A-Za-z]{3})?[ ]*[0-9][0-9., ]*\)?$"
         return self._sql_regex_match(expr, pattern, dialect_name)
 
     def _boolean_valid_expr(self, expr: str, dialect_name: str) -> str:

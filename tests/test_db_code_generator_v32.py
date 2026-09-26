@@ -306,3 +306,36 @@ def test_generated_sql_supports_dataset_names_and_replace_strategy():
     assert "FROM origin.devoluciones_raw AS src" in sql
     assert "TRUNCATE TABLE staging.devoluciones;" in sql
     assert "TRUNCATE TABLE staging.devoluciones_cuarentena;" in sql
+
+
+def test_generated_sql_is_reexecution_safe_by_default():
+    df, profile, validation_results = build_test_context()
+
+    sql = DatabaseCodeGenerator(
+        df,
+        profile,
+        validation_results,
+        table_name="datos_limpios",
+    ).generate_complete_script()
+
+    assert "TRUNCATE TABLE datos_limpios;" in sql
+    assert "TRUNCATE TABLE datos_cuarentena;" in sql
+
+
+def test_generated_sql_parses_each_date_once_and_validates_campaign_range():
+    df = pd.DataFrame({
+        "id": [1, 2],
+        "fecha_inicio": ["2024-01-10", "2024-02-20"],
+        "fecha_fin": ["2024-01-20", "2024-02-10"],
+    })
+    profile = DataProfiler(df).generate_profile()
+    validation_results = DataValidator(df).validate_all()
+
+    sql = DatabaseCodeGenerator(df, profile, validation_results).generate_complete_script()
+
+    assert "WITH source_data AS" in sql
+    assert "), parsed_data AS (" in sql
+    assert "fecha_fin_ok" in sql
+    assert "fecha_fin_parsed >= fecha_inicio_parsed" in sql
+    assert sql.count("AS fecha_inicio_parsed") == 1
+    assert sql.count("AS fecha_fin_parsed") == 1

@@ -192,7 +192,16 @@ def get_column_type_hints(column_name):
         return 'Teléfono'
     if any(keyword in column_lower for keyword in URL_KEYWORDS):
         return 'URL'
-    if any(keyword in column_lower for keyword in ID_KEYWORDS):
+    if (
+        column_lower == 'id'
+        or column_lower.startswith('id_')
+        or column_lower.endswith('_id')
+        or any(
+            keyword in column_lower
+            for keyword in ID_KEYWORDS
+            if keyword != 'id'
+        )
+    ):
         return 'Identificador'
     
     return None
